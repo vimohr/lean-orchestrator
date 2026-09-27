@@ -30,6 +30,8 @@ _USAGE_LIMIT_PATTERNS = (
     "usage limit", "hit your limit", "limit reached", "insufficient_quota", "quota exceeded",
     "credit balance is too low",
 )
+# A full disk or disk quota also reads "quota exceeded", but waiting for a model limit cannot fix it.
+_DISK_FULL_PATTERNS = ("disk quota exceeded", "quota exceeded (os error", "no space left on device")
 
 
 class AgentError(RuntimeError):
@@ -95,6 +97,8 @@ def _stop_process(process: subprocess.Popen) -> None:
 
 def classify_failure(text: str) -> type[AgentError]:
     lowered = text.lower()
+    if any(pattern in lowered for pattern in _DISK_FULL_PATTERNS):
+        return AgentError
     if any(pattern in lowered for pattern in _USAGE_LIMIT_PATTERNS):
         return AgentUsageLimitError
     if any(pattern in lowered for pattern in _CAPACITY_PATTERNS):

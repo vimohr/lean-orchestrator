@@ -80,6 +80,10 @@ def test_failure_classification_and_json_recovery():
     assert classify_failure("Claude AI usage limit reached") is AgentUsageLimitError
     assert classify_failure("HTTP 529 overloaded") is AgentTransientError
     assert classify_failure("syntax error") is AgentError
+    assert classify_failure("You exceeded your current quota (insufficient_quota)") is AgentUsageLimitError
+    assert classify_failure("failed to write session: Quota exceeded (os error 122)") is AgentError
+    assert classify_failure("write error: Disk quota exceeded") is AgentError
+    assert classify_failure("OSError: [Errno 28] No space left on device") is AgentError
     assert extract_json_block('Here you go:\n```json\n{"a": 1}\n```\nbye') == {"a": 1}
     assert extract_json_block('{"b": [1, 2]}') == {"b": [1, 2]}
     assert extract_json_block("text\n{\"c\": true}") == {"c": True}
