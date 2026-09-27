@@ -252,7 +252,8 @@ def record_iteration(
             reproduced=reproduced, created=stamp,
         ))
     for text in report.get("new_subgoals", []):
-        state.subgoals.append(Subgoal(id=state.next_id("G"), statement=text, branch=branch_id, created=stamp))
+        if _open_subgoal_like(state, text) is None:
+            state.subgoals.append(Subgoal(id=state.next_id("G"), statement=text, branch=branch_id, created=stamp))
     for reference in verification.references:
         matching = next((item for item in report.get("references", []) if item["citation"] == reference.citation), {})
         state.references.append(Reference(
@@ -302,6 +303,17 @@ def _review_text(review: dict[str, Any] | None) -> str:
     lines = [f"{issue['severity']}: {issue['location']}: {issue['problem']}" for issue in review.get("issues", [])]
     lines.extend(f"hidden assumption: {item}" for item in review.get("hidden_assumptions", []))
     return "\n".join(lines)
+
+
+def _open_subgoal_like(state: ResearchState, statement: str) -> Subgoal | None:
+    """An open subgoal with the same wording; agents often restate one instead of citing its id."""
+    key = _subgoal_key(statement)
+    return next((goal for goal in state.subgoals if goal.status == "open" and _subgoal_key(goal.statement) == key),
+                None)
+
+
+def _subgoal_key(text: str) -> str:
+    return " ".join(text.split()).casefold().rstrip(".")
 
 
 def _close_subgoal(state: ResearchState, subgoal_id: str | None, claim_id: str) -> None:
@@ -398,7 +410,7 @@ def apply_decision(state: ResearchState, decision: dict[str, Any], *, stamp: Sta
             if update.get("reason"):
                 existing.note = update["reason"]
     for update in decision.get("subgoal_updates", []):
-        goal = state.subgoal(update.get("id"))
+        goal = state.subgoal(update.get("id")) or _open_subgoal_like(state, update["statement"])
         if goal is None:
             state.subgoals.append(Subgoal(
                 id=state.next_id("G"), statement=update["statement"], status=update["status"],

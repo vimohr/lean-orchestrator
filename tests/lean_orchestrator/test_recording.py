@@ -97,6 +97,22 @@ def test_record_iteration_assigns_ids_trust_subgoals_and_dead_ends():
     assert outcome.weighted_gain(ProgressConfig()) == 0.5 + 0.5
 
 
+def test_restated_subgoals_update_the_open_subgoal_instead_of_duplicating_it():
+    current = state()
+    current.subgoals.append(Subgoal(id="G1", statement="Check d = 4 numerically."))
+    current.counters["G"] = 1
+    record_iteration(current, stamp=Stamp(1, 1), plan={"branch": "B1"},
+                     report=_report(claims=[], new_subgoals=["check  d = 4 numerically", "new goal"]),
+                     verification=IterationVerification(), critique=None)
+    assert [goal.statement for goal in current.subgoals] == ["Check d = 4 numerically.", "new goal"]
+    apply_decision(current, {"subgoal_updates": [{"statement": "Check d = 4 numerically", "status": "closed",
+                                                   "closed_by": "C1"}]}, stamp=Stamp(1, 2))
+    assert [(goal.id, goal.status) for goal in current.subgoals] == [("G1", "closed"), ("G2", "open")]
+    apply_decision(current, {"subgoal_updates": [{"statement": "Check d = 4 numerically.", "status": "open"}]},
+                   stamp=Stamp(2, 0))
+    assert [(goal.id, goal.status) for goal in current.subgoals][-1] == ("G3", "open"), "closed goals may reopen anew"
+
+
 def test_retractions_spare_lean_verified_claims():
     current = state()
     current.claims += [Claim(id="C1", kind="lemma", statement="a", trust=CRITIC_ACCEPTED),
