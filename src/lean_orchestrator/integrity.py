@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
 import threading
 import time
@@ -23,13 +24,6 @@ from typing import Any
 
 from .jsonio import atomic_write_bytes, dumps, sha256_bytes, utc_now
 from .paths import WorkspacePaths
-
-
-@dataclass(frozen=True)
-class _Expected:
-    sha256: str
-    size: int
-    mtime_ns: int
 
 
 @dataclass(frozen=True)
@@ -47,7 +41,7 @@ class IntegrityGuard:
     def __init__(self, paths: WorkspacePaths) -> None:
         self.paths = paths
         self._lock = threading.RLock()
-        self._expected: dict[str, _Expected] = {}
+        self._expected: dict[str, str] = {}  # workspace-relative path -> sha256 of its content
         self._watched_dirs: set[str] = set()
         self._allowed_new: set[str] = set()
         self._blob_refs: Counter[str] = Counter()
@@ -82,18 +76,15 @@ class IntegrityGuard:
             self._blob_path(digest).unlink(missing_ok=True)
 
     def _record(self, relative: str, data: bytes) -> None:
-        path = self._absolute(relative)
-        stat = path.stat()
         digest = sha256_bytes(data)
         previous = self._expected.get(relative)
-        if previous is not None and previous.sha256 == digest:
-            self._expected[relative] = _Expected(digest, stat.st_size, stat.st_mtime_ns)
+        if previous == digest:
             return
         self._store_blob(digest, data)
         self._blob_refs[digest] += 1
-        self._expected[relative] = _Expected(digest, stat.st_size, stat.st_mtime_ns)
+        self._expected[relative] = digest
         if previous is not None:
-            self._release_blob(previous.sha256)
+            self._release_blob(previous)
 
     def protect(self, path: Path) -> None:
         """Freeze the current content of an existing file."""
@@ -114,9 +105,9 @@ class IntegrityGuard:
 
     def unprotect(self, path: Path) -> None:
         with self._lock:
-            expected = self._expected.pop(self._relative(path), None)
-            if expected is not None:
-                self._release_blob(expected.sha256)
+            digest = self._expected.pop(self._relative(path), None)
+            if digest is not None:
+                self._release_blob(digest)
 
     def is_protected(self, path: Path) -> bool:
         with self._lock:
@@ -150,22 +141,15 @@ class IntegrityGuard:
         """Undo unexpected changes to protected files; return what was found."""
         violations: list[Violation] = []
         with self._lock:
-            for relative, expected in list(self._expected.items()):
-                path = self._absolute(relative)
-                try:
-                    stat = path.stat()
-                except FileNotFoundError:
-                    self._restore(relative, expected)
-                    violations.append(Violation(relative, "deleted", "restored", utc_now()))
+            # One quarantine folder per check, distinct even for checks within the same second.
+            batch = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
+            for relative, digest in list(self._expected.items()):
+                kind = self._change(self._absolute(relative), digest)
+                if kind is None:
                     continue
-                if (stat.st_size, stat.st_mtime_ns) == (expected.size, expected.mtime_ns):
-                    continue
-                data = path.read_bytes()
-                if sha256_bytes(data) == expected.sha256:
-                    self._expected[relative] = _Expected(expected.sha256, stat.st_size, stat.st_mtime_ns)
-                    continue
-                self._restore(relative, expected)
-                violations.append(Violation(relative, "modified", "restored", utc_now()))
+                self._clear_way(relative, batch)
+                atomic_write_bytes(self._absolute(relative), self._blob_path(digest).read_bytes())
+                violations.append(Violation(relative, kind, "restored", utc_now()))
             for watched in sorted(self._watched_dirs):
                 directory = self._absolute(watched)
                 if not directory.is_dir():
@@ -173,34 +157,51 @@ class IntegrityGuard:
                 for path in sorted(directory.rglob("*")):
                     if not path.is_file() and not path.is_symlink():
                         continue
-                    relative = self._relative(path) if not path.is_symlink() else path.relative_to(self.paths.root).as_posix()
+                    relative = path.relative_to(self.paths.root).as_posix()
                     if relative in self._expected or relative in self._allowed_new:
                         continue
-                    self._quarantine(path, relative)
+                    self._quarantine(path, relative, batch)
                     violations.append(Violation(relative, "created", "quarantined", utc_now()))
         return violations
 
-    def _restore(self, relative: str, expected: _Expected) -> None:
-        path = self._absolute(relative)
-        if path.is_symlink() or path.is_dir():
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
-        data = self._blob_path(expected.sha256).read_bytes()
-        atomic_write_bytes(path, data)
-        stat = path.stat()
-        self._expected[relative] = _Expected(expected.sha256, stat.st_size, stat.st_mtime_ns)
+    @staticmethod
+    def _change(path: Path, digest: str) -> str | None:
+        """How ``path`` departs from the content hashed as ``digest``, or None if it matches.
 
-    def _quarantine(self, path: Path, relative: str) -> None:
-        target = self.paths.quarantine_dir / time.strftime("%Y%m%d-%H%M%S") / relative
+        The content is hashed on every check: timestamps are too coarse, and too easy
+        to reset, to rule out an edit that keeps the file size.
+        """
+        if path.is_symlink() or path.is_dir():
+            return "replaced"
+        try:
+            data = path.read_bytes()
+        except (FileNotFoundError, NotADirectoryError):
+            return "deleted"
+        except PermissionError:
+            return "modified"
+        return None if sha256_bytes(data) == digest else "modified"
+
+    def _clear_way(self, relative: str, batch: str) -> None:
+        """Quarantine whatever keeps ``relative`` from being a regular file below real directories."""
+        parts = Path(relative).parts
+        for depth in range(1, len(parts) + 1):
+            current = self.paths.root.joinpath(*parts[:depth])
+            if not current.is_symlink() and not current.exists():
+                return
+            is_file_level = depth == len(parts)
+            if current.is_symlink() or current.is_dir() == is_file_level:
+                self._quarantine(current, Path(*parts[:depth]).as_posix(), batch)
+                return
+
+    def _quarantine(self, path: Path, relative: str, batch: str) -> None:
+        target = self.paths.quarantine_dir / batch / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(path, target)
 
     def manifest(self) -> dict[str, str]:
         """Expected hashes of all protected files, for audits and tests."""
         with self._lock:
-            return {relative: expected.sha256 for relative, expected in sorted(self._expected.items())}
+            return dict(sorted(self._expected.items()))
 
 
 def describe_violations(violations: list[Violation]) -> str:
