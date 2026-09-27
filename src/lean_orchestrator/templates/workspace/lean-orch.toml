@@ -1,0 +1,124 @@
+# lean-orch workspace configuration.
+# Every key is optional; removing a key restores its default. Unknown keys are errors.
+
+# Agent commands (which CLI runs which role) live in agents.toml.
+# Optional MCP servers (see README): add "--mcp-config", "{mcp_config}" to a Claude
+# command in agents.toml, or "-c", "mcp_servers.qop.url=\"https://api.qiqc-op.com/mcp\"" to Codex.
+
+# ---------------------------------------------------------------------------
+# Research loop
+# ---------------------------------------------------------------------------
+[loop]
+iterations_per_epoch = 12        # bounded research epochs (the design suggests 10 to 20)
+max_parallel = 1                 # problems researched concurrently
+max_epochs = 0                   # 0 means no limit
+max_hours = 0                    # wall-clock budget per run; 0 means no limit
+agent_timeout_minutes = 0        # per agent call; 0 means no limit
+heartbeat_seconds = 60
+max_consecutive_failures = 3     # stop after this many failed epochs in a row
+literature_recheck_epochs = 5    # re-check the literature every N epochs of a problem
+branch_neglect_iterations = 4    # remind the supervisor about idle prove/disprove branches
+
+# ---------------------------------------------------------------------------
+# Portfolio scheduling:
+#   priority = expected_progress + exploration_bonus + relevance - stagnation - suspension
+# ---------------------------------------------------------------------------
+[scheduler]
+exploration_reserve = 0.2        # share of epochs for never-tried or suspended problems
+exploration_weight = 0.4         # UCB-style bonus for rarely tried problems
+relevance_weight = 0.3           # per relevant new result from another problem
+stagnation_weight = 0.3
+suspended_penalty = 0.6          # decays with suspended_decay_epochs
+suspended_decay_epochs = 10
+prior_strength = 1.0             # weight of the triage prior against observed progress
+ewma_alpha = 0.5                 # discounting of past epoch scores
+min_suitability = 2.5            # triage score (0 to 5) needed to become a candidate
+max_relevance_bonus = 3.0
+
+# ---------------------------------------------------------------------------
+# Progress: iteration scores (0 to 3) are grounded in weighted, verified artifacts.
+# ---------------------------------------------------------------------------
+[progress]
+threshold = 2                    # scores below this count as stagnation
+escalate_after = 2               # stagnating iterations before the supervisor must change strategy
+suspend_after = 4                # stagnating iterations before automatic suspension
+meaningful_gain = 1.0            # weighted artifact gain needed for a score of 2 or more
+weight_lean_verified = 1.0
+weight_reproduced = 1.0
+weight_formal_statement = 1.0
+weight_informal_claim = 0.5
+weight_dead_end = 0.5
+weight_reference = 0.25
+
+# ---------------------------------------------------------------------------
+# Verification: Lean is the judge of formal correctness.
+# ---------------------------------------------------------------------------
+[verification.lean]
+enabled = true
+project_dir = "lean"
+lake = "lake"                    # found on PATH or in ~/.elan/bin
+build_timeout_minutes = 30
+allowed_axioms = ["propext", "Classical.choice", "Quot.sound"]
+forbid_native_decide = true
+kernel_recheck = "main"          # leanchecker replay: "off", "main" (main results), or "all"
+comparator = "main"              # lake comparator for main results (Lean >= 4.35): "off" or "main"
+comparator_paranoid = true       # also run the bundled external kernels
+allow_unsandboxed_comparator = true   # without bubblewrap (e.g. macOS) run it unsandboxed
+triviality_probe = true          # reject formal statements that automation proves or refutes
+triviality_timeout_minutes = 5
+
+[verification.experiments]
+enabled = true
+python = ["{workspace}/.venv/bin/python"]   # created by "uv sync" during init
+timeout_minutes = 30
+float_rtol = 1e-6
+float_atol = 1e-9
+max_copy_megabytes = 200
+
+[verification.citations]
+enabled = true                   # confirm arXiv IDs and DOIs exist and match the title
+timeout_seconds = 15
+
+# ---------------------------------------------------------------------------
+# Catalogue: the QIQCOP Zoo (https://qiqc-op.com) is polled for new or changed problems.
+# ---------------------------------------------------------------------------
+[catalogue.qiqcop]
+enabled = true
+jsonl_url = "https://qiqc-op.com/api/v1/problems.jsonl"
+release_url = "https://qiqc-op.com/api/v1/release.json"
+include_status = ["Unsolved"]
+include_fields = []              # e.g. ["Quantum Resource Theory"]; empty means all
+exclude_topics = []              # e.g. ["Quantum supremacy"]
+sync_interval_hours = 24
+timeout_seconds = 60
+
+[triage]
+enabled = true
+batch_size = 10
+max_per_run = 40                 # problems triaged when a run starts (more follow when candidates run out)
+preferred_topics = [             # triaged first: topics that tend to have finite-dimensional statements
+    "Matrix and entropy inequalities", "Quantum separability", "Bound entanglement", "Bell nonlocality",
+    "Bell-diagonal states", "Absolutely maximally entangled states", "Mutually unbiased bases",
+    "Symmetric informationally complete measurements", "Quantum channel structure", "Local unitary equivalence",
+]
+
+[triage.weights]
+precision = 1.0
+finite_dimensional = 1.0
+formalizability = 1.0
+closability = 1.0
+tractable_subcases = 1.5
+background = 0.5
+
+[notify]
+email = ""                       # or pass --email to 'lean-orch run'
+events = ["resolution_claimed", "resolved_externally", "run_stopped"]
+
+[git]
+enabled = true
+author_name = "lean-orch"
+author_email = "lean-orch@localhost"
+
+[mcp]
+qiqcop_url = "https://api.qiqc-op.com/mcp"
+lean_lsp = false                 # also write a lean-lsp-mcp server to .lean-orch/mcp.json

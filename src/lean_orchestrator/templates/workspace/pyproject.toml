@@ -1,0 +1,16 @@
+[project]
+name = "openq-research-env"
+version = "0.1.0"
+description = "Python environment for numerical and symbolic experiments run by research agents"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "scipy",
+    "sympy",
+    "mpmath",
+    "cvxpy",
+    "networkx",
+]
+
+[tool.uv]
+package = false

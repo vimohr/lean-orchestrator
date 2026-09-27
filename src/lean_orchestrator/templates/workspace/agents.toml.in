@@ -1,0 +1,48 @@
+# How lean-orch calls its agents.
+#
+# lean-orch shows this file and asks for confirmation the first time it starts
+# agents in this workspace ("lean-orch run --yes" confirms without asking).
+# Edit it freely; "lean-orch doctor" checks that every command can be found.
+#
+# Each role runs one command. The rendered prompt is appended as the last
+# argument (prompt_via = "argument") or written to standard input
+# (prompt_via = "stdin"). Placeholders expanded in commands: {workspace},
+# {run_dir}, {role}, {problem}, {output}, {mcp_config}.
+#
+# Roles:
+#   researcher  attempts one research step: proofs, Lean files, experiments
+#   critic      adversarial review of every claim (ideally another model family)
+#   supervisor  plans the next step and scores progress
+#   literature  checks whether a problem is still open and collects references
+#   triage      scores untried problems against the selection criteria
+#
+# Safety: agents run in the workspace directory with your user rights.
+# Codex runs in its own sandbox (--sandbox workspace-write, Landlock on Linux):
+# it can write only inside the workspace and has no network access, while
+# --search keeps web search available. Claude runs with your Claude Code
+# settings (~/.claude/settings.json); it needs shell access for Lean and Python
+# (researcher, critic) and web search (literature, and useful for all roles).
+# Independently of either tool, lean-orch restores any change an agent makes to
+# its own state files and locked Lean files.
+{detection_note}
+retry_delays_seconds = [15, 30, 60, 120, 300]   # retries when a model is at capacity
+usage_limit_wait_minutes = 15                    # wait between retries after a usage limit
+usage_limit_max_hours = 12                       # give up after waiting this long
+max_repair_attempts = 1                          # re-runs to fix an invalid output file
+
+[researcher]
+command = {researcher}
+prompt_via = "argument"
+timeout_minutes = 0                              # 0: use loop.agent_timeout_minutes
+
+[critic]
+command = {critic}
+
+[supervisor]
+command = {supervisor}
+
+[literature]
+command = {literature}
+
+[triage]
+command = {triage}

@@ -1,0 +1,15 @@
+name = "openq"
+version = "0.1.0"
+defaultTargets = ["OpenQ"]
+
+[leanOptions]
+pp.unicode.fun = true
+autoImplicit = false
+relaxedAutoImplicit = false
+maxSynthPendingDepth = 3
+
+{requires}
+
+[[lean_lib]]
+name = "OpenQ"
+globs = ["OpenQ.+"]

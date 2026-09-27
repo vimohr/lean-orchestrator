@@ -1,0 +1,20 @@
+# Machine-local orchestrator files
+.lean-orch/runs/
+.lean-orch/logs/
+.lean-orch/objects/
+.lean-orch/tmp/
+.lean-orch/quarantine/
+.lean-orch/inbox/
+.lean-orch/run.lock
+.lean-orch/lake.lock
+.lean-orch/STOP
+
+# Lean build output and dependencies
+lean/.lake/
+lean/OpenQ/Judge/
+
+# Python
+.venv/
+__pycache__/
+*.py[oc]
+.DS_Store
