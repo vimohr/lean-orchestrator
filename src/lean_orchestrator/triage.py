@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import time
 from dataclasses import dataclass, field
 
@@ -72,7 +73,8 @@ def triage_pending(services: Services, *, limit: int | None = None,
     size = services.config.triage.batch_size
     batches = [pending[index:index + size] for index in range(0, len(pending), size)]
     directory = services.paths.internal_dir / "triage"
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    # Unique per call: several triage rounds can start within the same second.
+    stamp = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
     for number, batch in enumerate(batches, start=1):
         if services.should_stop():
             break
