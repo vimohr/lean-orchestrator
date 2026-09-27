@@ -89,6 +89,19 @@ def test_agents_toml_needs_one_confirmation(cli_workspace: Path, monkeypatch, ca
     assert cli._agents_ready(cli_workspace, cli.Console(), assume_yes=False)
 
 
+def test_changed_agents_toml_needs_a_new_confirmation(cli_workspace: Path, monkeypatch, capsys):
+    paths = WorkspacePaths(cli_workspace)
+    assert cli._agents_ready(cli_workspace, cli.Console(), assume_yes=True)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    assert cli._agents_ready(cli_workspace, cli.Console(), assume_yes=False)
+    paths.agents_config.write_text(paths.agents_config.read_text() + "\n# edited\n")
+    capsys.readouterr()
+    assert not cli._agents_ready(cli_workspace, cli.Console(), assume_yes=False)
+    assert "changed since it was last confirmed" in capsys.readouterr().out
+    paths.agents_confirmed.write_text("not json")
+    assert not cli._agents_ready(cli_workspace, cli.Console(), assume_yes=False)
+
+
 def test_missing_agents_toml_is_recreated_and_yes_confirms(cli_workspace: Path):
     paths = WorkspacePaths(cli_workspace)
     paths.agents_config.unlink()

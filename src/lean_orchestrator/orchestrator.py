@@ -145,7 +145,8 @@ class Orchestrator:
         paths.stop_file.unlink(missing_ok=True)
         guard.reset_store()
         write_schema_files(paths.schemas_dir)  # derived from code; must match the validator
-        for path in (paths.config, paths.portfolio, paths.catalogue_sources, paths.portfolio_md):
+        for path in (paths.config, paths.agents_config, paths.agents_confirmed, paths.portfolio,
+                     paths.catalogue_sources, paths.portfolio_md):
             if path.is_file():
                 guard.protect(path)
         for directory in (paths.prompts_dir, paths.schemas_dir, paths.catalogue_dir, paths.knowledge_dir):

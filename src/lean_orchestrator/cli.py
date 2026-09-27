@@ -199,6 +199,8 @@ def _agents_ready(workspace: Path, console: Console, *, assume_yes: bool) -> boo
     if agents_confirmed(paths):
         return True
     agents = load_config(workspace).agents
+    if paths.agents_confirmed.exists():
+        print(f"{paths.agents_config} changed since it was last confirmed.")
     print(("Created " if created else "Using ") + f"{paths.agents_config} with these agent commands:")
     for role in ROLES:
         command = agents.for_role(role).command

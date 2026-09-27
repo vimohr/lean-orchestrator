@@ -144,7 +144,13 @@ def write_agents_config(paths: WorkspacePaths) -> Path:
 
 
 def agents_confirmed(paths: WorkspacePaths) -> bool:
-    return paths.agents_confirmed.is_file()
+    """Whether a human confirmed ``agents.toml`` as it is now; any later edit needs a new confirmation."""
+    try:
+        record = json.loads(paths.agents_confirmed.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
+    return (isinstance(record, dict) and paths.agents_config.is_file()
+            and record.get("agents_toml_sha256") == sha256_file(paths.agents_config))
 
 
 def confirm_agents(paths: WorkspacePaths) -> None:

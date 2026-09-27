@@ -124,10 +124,11 @@ lean-orch show <problem>              # progress report of one problem
 ```
 
 The first `lean-orch run` (or `triage`) shows the agent commands from `agents.toml` and
-asks for confirmation once, as agent-runner does; `--yes` confirms without asking.
-`agents.toml` is generated from the CLIs found on the machine, and it is recreated if
-deleted. General settings (budgets, scheduling, verification, catalogue filters) live
-in `lean-orch.toml`.
+asks for confirmation, as agent-runner does, and asks again whenever the file changes;
+`--yes` confirms without asking. `agents.toml` is generated from the CLIs found on the
+machine, and it is recreated if deleted. General settings (budgets, scheduling,
+verification, catalogue filters) live in `lean-orch.toml`. Both files are protected
+while a run is active, so stop the run (`lean-orch stop`) before editing them.
 
 `lean-orch run` also syncs the catalogue and triages new problems unless `--no-sync` or
 `--no-triage` is given. Triage is bounded (`triage.max_per_run`, 40 problems per

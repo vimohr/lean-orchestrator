@@ -12,6 +12,7 @@ from .config import ROLES, Config, expand_placeholders
 from .paths import WorkspacePaths
 from .procutil import run_captured
 from .verify.lean import LeanVerifier
+from .workspace import agents_confirmed
 
 OK, WARN, FAIL = "ok", "warn", "fail"
 
@@ -43,9 +44,11 @@ def check_agents(paths: WorkspacePaths, config: Config) -> list[Check]:
             versions[executable] = _version(executable)[1]
         checks.append(Check(f"agent {role}", OK, f"{command[0]} ({versions[executable]})"))
     if paths.agents_config.is_file():
-        confirmed = paths.agents_confirmed.is_file()
-        checks.append(Check("agents.toml", OK if confirmed else WARN,
-                            "reviewed" if confirmed else "not yet confirmed; 'lean-orch run' will ask"))
+        if agents_confirmed(paths):
+            checks.append(Check("agents.toml", OK, "reviewed"))
+        else:
+            state = "changed since it was confirmed" if paths.agents_confirmed.exists() else "not yet confirmed"
+            checks.append(Check("agents.toml", WARN, f"{state}; 'lean-orch run' will ask"))
     else:
         checks.append(Check("agents.toml", WARN, "missing; 'lean-orch run' will create it from the installed CLIs"))
     uses_codex_sandbox = any("--sandbox" in config.agents.for_role(role).command for role in ROLES)

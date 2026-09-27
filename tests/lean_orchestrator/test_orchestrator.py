@@ -66,6 +66,15 @@ def test_one_orchestrator_per_workspace(make_orchestrator):
         make_orchestrator()
 
 
+def test_agent_settings_cannot_change_during_a_run(make_orchestrator):
+    orchestrator = make_orchestrator()
+    agents_toml = orchestrator.paths.agents_config
+    original = agents_toml.read_text()
+    agents_toml.write_text(original + "\n# edited by an agent\n")
+    assert [v.path for v in orchestrator.services.guard.check_and_restore()] == ["agents.toml"]
+    assert agents_toml.read_text() == original
+
+
 def test_stop_file_drains_the_loop(workspace, make_orchestrator):
     orchestrator = make_orchestrator()
     add_problem(orchestrator, "local_x", "Never started")
