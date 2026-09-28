@@ -96,8 +96,8 @@ def build_services(root: Path, *, config: Config | None = None, verbose: bool = 
     console = console or Console()
     events = EventLog(paths.events)
     guard = IntegrityGuard(paths)
-    stop_event = threading.Event()
-    agents = AgentRunner(paths, config, console, events, stop_event, stream_output=verbose)
+    stop_event, drain_event = threading.Event(), threading.Event()
+    agents = AgentRunner(paths, config, console, events, stop_event, drain_event=drain_event, stream_output=verbose)
     prompts = PromptLibrary(paths.prompts_dir)
     lean = LeanVerifier(paths, config.verification.lean)
     return Services(
@@ -122,6 +122,7 @@ def build_services(root: Path, *, config: Config | None = None, verbose: bool = 
                           events, paths.root),
         self_check=self_check_command(),
         stop_event=stop_event,
+        drain_event=drain_event,
     )
 
 

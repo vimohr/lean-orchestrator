@@ -137,11 +137,16 @@ A run stops when its budget (`--epochs`, `--hours`) is spent, when no problem is
 eligible, on `lean-orch stop` (after the current iterations), or on Ctrl-C (press
 twice to stop running agents immediately). Runs resume from the saved state.
 
+To save model quota without ending a run, `lean-orch pause` (from any terminal in
+the workspace) lets running agent calls finish but starts no new ones until
+`lean-orch resume`; `--for 6h` or `--until 22:00` ends the pause by itself.
+
 Steering while it runs (commands are applied between iterations):
 
 ```sh
 lean-orch hint <problem> "Try the symmetric subspace first."   # also revives a suspended problem
 lean-orch activate | suspend | defer <problem>
+lean-orch pause [--for 6h | --until 22:00]                       # no new agent calls; `lean-orch resume` continues
 lean-orch pin <problem>                                          # large fixed priority bonus
 lean-orch review                                                 # list claimed resolutions
 lean-orch review <problem> --accept | --reject "reason"

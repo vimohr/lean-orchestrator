@@ -54,6 +54,21 @@ def test_add_status_show_and_commands(cli_workspace: Path, capsys):
     assert main([*workspace, "show", "nonexistent"]) == 2
 
 
+def test_pause_and_resume_commands(cli_workspace: Path, capsys):
+    workspace = ["-w", str(cli_workspace)]
+    assert main([*workspace, "pause", "--for", "2h"]) == 0
+    capsys.readouterr()
+    assert main([*workspace, "status"]) == 0
+    assert "Paused until" in capsys.readouterr().out
+    assert main([*workspace, "resume"]) == 0
+    assert main([*workspace, "status"]) == 0
+    assert "Paused" not in capsys.readouterr().out
+    assert main([*workspace, "pause", "--until", "25:00"]) == 2
+    assert main([*workspace, "pause"]) == 0 and (cli_workspace / ".lean-orch" / "PAUSE").is_file()
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["pause", "--for", "2h", "--until", "22:00"])
+
+
 def test_parser_rejects_bad_arguments():
     parser = build_parser()
     with pytest.raises(SystemExit):

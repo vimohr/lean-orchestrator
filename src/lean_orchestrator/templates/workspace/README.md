@@ -43,5 +43,7 @@ lean-orch show <problem>         # print a progress report
 lean-orch hint <problem> "..."   # give agents a hint (reactivates a suspended problem)
 lean-orch review <problem> --accept | --reject "reason"
 lean-orch stop                   # finish the current iterations, then stop
+lean-orch pause [--for 6h]        # running agent calls finish, no new ones start
+lean-orch resume                 # end a pause
 lean-orch refresh-prompts        # install updated default prompts (keeps a backup)
 ```

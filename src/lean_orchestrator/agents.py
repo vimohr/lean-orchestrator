@@ -20,6 +20,7 @@ from typing import TextIO
 from .config import AgentConfig, Config, expand_placeholders
 from .events import Console, EventLog
 from .jsonio import utc_now, write_json
+from .pause import active_pause
 from .paths import WorkspacePaths
 
 _CAPACITY_PATTERNS = (
@@ -117,6 +118,7 @@ class AgentRunner:
         events: EventLog,
         stop_event: threading.Event | None = None,
         *,
+        drain_event: threading.Event | None = None,
         stream_output: bool = False,
     ) -> None:
         self.paths = paths
@@ -124,7 +126,9 @@ class AgentRunner:
         self.console = console
         self.events = events
         self.stop_event = stop_event or threading.Event()
+        self.drain_event = drain_event
         self.stream_output = stream_output
+        self.pause_poll_seconds = 30.0
         self.calls = 0
         self._calls_lock = threading.Lock()
 
@@ -174,6 +178,25 @@ class AgentRunner:
         if self.stop_event.wait(seconds):
             raise AgentStopped("stop requested while waiting to retry")
 
+    def _wait_while_paused(self, role: str, tag: str) -> None:
+        """Hold back a new agent call while the workspace is paused; running calls are unaffected."""
+        announced = False
+        while (current := active_pause(self.paths)) is not None:
+            if self._stop_requested():
+                raise AgentStopped("stop requested while paused")
+            if not announced:
+                self.console.info(f"paused {current.describe()}; the {role} call waits", tag=tag)
+                self.events.emit("agent_paused", role=role,
+                                 until=current.until.isoformat() if current.until else None)
+                announced = True
+            self.stop_event.wait(self.pause_poll_seconds)
+        if announced:
+            self.console.info(f"pause ended; starting the {role} call", tag=tag)
+
+    def _stop_requested(self) -> bool:
+        return (self.stop_event.is_set() or self.paths.stop_file.exists()
+                or (self.drain_event is not None and self.drain_event.is_set()))
+
     def _new_run_dir(self, role: str, problem_id: str | None) -> Path:
         stamp = time.strftime("%Y%m%d-%H%M%S")
         label = re.sub(r"[^a-zA-Z0-9_.-]", "-", problem_id or "global")[:40]
@@ -193,6 +216,7 @@ class AgentRunner:
     ) -> AgentResult:
         if self.stop_event.is_set():
             raise AgentStopped("stop requested before the agent started")
+        self._wait_while_paused(role, tag)
         run_dir = self._new_run_dir(role, problem_id)
         placeholders = {
             "workspace": str(self.paths.root),

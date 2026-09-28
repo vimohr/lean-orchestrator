@@ -68,6 +68,7 @@ def test_one_orchestrator_per_workspace(make_orchestrator):
 
 def test_agent_settings_cannot_change_during_a_run(make_orchestrator):
     orchestrator = make_orchestrator()
+    assert orchestrator.services.agents.drain_event is orchestrator.services.drain_event
     agents_toml = orchestrator.paths.agents_config
     original = agents_toml.read_text()
     agents_toml.write_text(original + "\n# edited by an agent\n")

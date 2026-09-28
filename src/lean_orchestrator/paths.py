@@ -121,6 +121,10 @@ class WorkspacePaths:
         return self.internal_dir / "STOP"
 
     @property
+    def pause_file(self) -> Path:
+        return self.internal_dir / "PAUSE"
+
+    @property
     def mcp_config(self) -> Path:
         return self.internal_dir / "mcp.json"
 

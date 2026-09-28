@@ -9,6 +9,7 @@ import shlex
 import shutil
 import sys
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 
 from . import __version__, inbox
@@ -20,6 +21,7 @@ from .doctor import FAIL, OK, run_checks
 from .events import Console
 from .notify import NotificationError, check_delivery, valid_email
 from .orchestrator import Orchestrator, WorkspaceBusy, build_services
+from .pause import Pause, PauseError, active_pause, clear_pause, next_clock_time, parse_duration, set_pause
 from .paths import CONFIG_FILENAME, WorkspacePaths
 from .portfolio import ACTIVE, CANDIDATE, DEFERRED, PENDING_REVIEW, SUSPENDED, PortfolioEntry, PortfolioStore
 from .scheduler import Scheduler
@@ -135,6 +137,11 @@ def build_parser() -> argparse.ArgumentParser:
     decision.add_argument("--reject", metavar="REASON")
 
     commands.add_parser("stop", help="finish the current iterations, then stop the running loop")
+    pause = commands.add_parser("pause", help="let running agent calls finish but start no new ones until resumed")
+    until = pause.add_mutually_exclusive_group()
+    until.add_argument("--for", dest="duration", metavar="DURATION", help="resume after this long, e.g. 90m, 6h, 1d")
+    until.add_argument("--until", metavar="HH:MM", help="resume the next time the local clock shows HH:MM")
+    commands.add_parser("resume", help="end a pause")
     commands.add_parser("refresh-prompts", help="replace workspace prompts with the packaged defaults (with backup)")
 
     check_lean = commands.add_parser("check-lean", help="verify a Lean declaration as the orchestrator does")
@@ -183,7 +190,8 @@ def _dispatch(args: argparse.Namespace, console: Console) -> int:
     handler = {
         "sync": _sync, "triage": _triage, "run": _run, "status": _status, "show": _show, "add": _add,
         "hint": _hint, "activate": _set_status, "suspend": _set_status, "defer": _set_status, "pin": _pin,
-        "review": _review, "stop": _stop, "refresh-prompts": _refresh_prompts, "doctor": _doctor,
+        "review": _review, "stop": _stop, "pause": _pause, "resume": _resume, "refresh-prompts": _refresh_prompts,
+        "doctor": _doctor,
         "check-lean": _check_lean,
         "build": _build,
         "check-experiment": _check_experiment,
@@ -284,6 +292,9 @@ def _status(args, workspace: Path, console: Console) -> int:
     for entry in portfolio.entries.values():
         counts[entry.display_status] = counts.get(entry.display_status, 0) + 1
     print(f"Workspace {paths.root}")
+    current = active_pause(paths)
+    if current is not None:
+        print(f"Paused {current.describe()}: no new agent calls start ('lean-orch resume' ends the pause).")
     print(f"Global epochs: {portfolio.global_epochs} (exploration {portfolio.exploration_epochs}); "
           + ", ".join(f"{status} {count}" for status, count in sorted(counts.items())))
     shown = [entry for entry in portfolio.entries.values()
@@ -393,6 +404,30 @@ def _stop(args, workspace: Path, console: Console) -> int:
     paths.stop_file.parent.mkdir(parents=True, exist_ok=True)
     paths.stop_file.touch()
     console.info("stop requested: the loop finishes its current iterations and exits")
+    return 0
+
+
+def _pause(args, workspace: Path, console: Console) -> int:
+    try:
+        if args.duration:
+            until = datetime.now().astimezone() + parse_duration(args.duration)
+        elif args.until:
+            until = next_clock_time(args.until)
+        else:
+            until = None
+    except PauseError as error:
+        console.warn(f"lean-orch: {error}")
+        return 2
+    set_pause(WorkspacePaths(workspace), until)
+    console.info(f"paused {Pause(until).describe()}: running agent calls finish, no new ones start")
+    return 0
+
+
+def _resume(args, workspace: Path, console: Console) -> int:
+    if clear_pause(WorkspacePaths(workspace)):
+        console.info("pause ended; a waiting run starts its next agent call within 30 seconds")
+    else:
+        console.info("not paused")
     return 0
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,7 @@ from lean_orchestrator.agents import (
 )
 from lean_orchestrator.config import AgentConfig
 from lean_orchestrator.events import EventLog
+from lean_orchestrator.pause import clear_pause, set_pause
 from lean_orchestrator.paths import WorkspacePaths
 
 
@@ -74,6 +76,33 @@ def test_stop_event_interrupts_waiting_and_running(tmp_path):
     agent = script(tmp_path, "print('never')\n")
     with pytest.raises(AgentStopped):
         runner(tmp_path, stop).run("critic", "p", tag="t", agent=agent)
+
+
+def test_a_pause_holds_back_new_calls_until_it_ends(tmp_path):
+    agent_runner = runner(tmp_path)
+    agent_runner.pause_poll_seconds = 0.02
+    output = tmp_path / "out.txt"
+    agent = script(tmp_path, "import os\nopen(os.environ['LEAN_ORCH_OUTPUT'], 'w').write('ran')\n")
+    set_pause(agent_runner.paths, None)
+    worker = threading.Thread(target=agent_runner.run, args=("critic", "p"),
+                              kwargs={"tag": "t", "output_path": output, "agent": agent})
+    worker.start()
+    time.sleep(0.3)
+    assert worker.is_alive() and not output.exists()
+    clear_pause(agent_runner.paths)
+    worker.join(timeout=30)
+    assert not worker.is_alive() and output.read_text() == "ran"
+
+
+def test_a_stop_request_ends_a_pause(tmp_path):
+    drain = threading.Event()
+    agent_runner = AgentRunner(WorkspacePaths(tmp_path), fake_config(), quiet_console(),
+                               EventLog(WorkspacePaths(tmp_path).events), drain_event=drain)
+    agent_runner.pause_poll_seconds = 0.02
+    set_pause(agent_runner.paths, None)
+    drain.set()
+    with pytest.raises(AgentStopped):
+        agent_runner.run("critic", "p", tag="t", agent=script(tmp_path, "print('never')\n"))
 
 
 def test_failure_classification_and_json_recovery():
