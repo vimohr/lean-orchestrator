@@ -1,4 +1,4 @@
-"""Email notifications for events a human should see (adapted from agent-runner).
+"""Email notifications for events a human should see.
 
 Delivery uses an SMTP relay when ``LEAN_ORCH_SMTP_HOST`` is set, and otherwise
 the local ``sendmail``, ``mail``, or ``mailx`` command. Environment variables:
@@ -111,19 +111,26 @@ class Notifier:
     """Send configured events by email; failures are logged, never fatal to research."""
 
     def __init__(self, recipient: str, events: tuple[str, ...], console: Console, log: EventLog,
-                 workspace: Path) -> None:
+                 workspace: Path, *, prefix: str = "lean-orch") -> None:
         self.recipient = recipient
         self.events = set(events)
         self.console = console
         self.log = log
         self.workspace = workspace
+        self.prefix = prefix
+
+    def _record(self, kind: str, **fields) -> None:
+        try:
+            self.log.emit(kind, **fields)
+        except OSError as error:
+            self.console.warn(f"could not record notification: {error}")
 
     def notify(self, event: str, subject: str, body: str) -> None:
         if not self.recipient or event not in self.events:
             return
         try:
-            send_email(self.recipient, f"lean-orch: {subject}", f"{body}\n\nWorkspace: {self.workspace}\n")
-            self.log.emit("notification_sent", event=event, subject=subject)
-        except NotificationError as error:
+            send_email(self.recipient, f"{self.prefix}: {subject}", f"{body}\n\nWorkspace: {self.workspace}\n")
+            self._record("notification_sent", event=event, subject=subject)
+        except (NotificationError, OSError, ValueError) as error:
             self.console.warn(f"could not send notification: {error}")
-            self.log.emit("notification_failed", event=event, error=str(error))
+            self._record("notification_failed", event=event, error=str(error))

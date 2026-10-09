@@ -7,10 +7,12 @@ from dataclasses import replace
 import pytest
 
 from lean_orchestrator.usage import TokenUsage
+from lean_orchestrator import notify
+from lean_orchestrator.notify import NotificationError
 from lean_orchestrator_v2.assessment import verify
 from lean_orchestrator_v2.backends import Completion
 from lean_orchestrator_v2.cli import init, main
-from lean_orchestrator_v2.config import load_config
+from lean_orchestrator_v2.config import NotifyConfig, load_config
 from lean_orchestrator_v2.demo import PACKET, DemoBackend, allocation, review
 from lean_orchestrator_v2.engine import Harness
 from lean_orchestrator_v2.models import CAMPAIGN_SCHEMA, Candidate
@@ -388,3 +390,76 @@ def test_lost_process_recovers_complete_work_without_double_counting_round(harne
     assert len(problem.rounds) == 1 and not problem.rounds[0]["counts_for_stagnation"]
     restored.recover_interrupted()
     assert len(problem.rounds) == 1
+
+
+@pytest.fixture
+def emailed_harness(harness, monkeypatch):
+    messages = []
+    monkeypatch.setattr(notify, "send_email", lambda recipient, subject, body: messages.append((recipient, subject, body)))
+    config = replace(harness.config, notify=NotifyConfig(email="researcher@example.org"))
+    return Harness(harness.store, config, backends=harness.backends), messages
+
+
+def test_resolution_email_is_once_per_problem_and_survives_restart_recovery(emailed_harness):
+    harness, messages = emailed_harness
+    backend_for(harness, Scripted(original=True))
+    result = run(harness, [allocation(method="first arm"), allocation(method="second arm")])
+    assert len(result["attempts"]) == 2 and len(messages) == 1
+    recipient, subject, body = messages[0]
+    assert recipient == "researcher@example.org" and subject.startswith("lean-orch-v2: result awaiting human review")
+    assert "Human acceptance: pending" in body and "External confirmation: none recorded" in body
+    assert "review" in body and "--reason" in body
+    assert harness.store.load().problems[PACKET["id"]].status == "awaiting_human"
+    restored = Harness(harness.store, harness.config, backends=harness.backends)
+    restored.recover_interrupted()
+    assert len(messages) == 1
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+def test_restricted_and_uncertain_results_do_not_send_resolution_email(emailed_harness, uncertain):
+    harness, messages = emailed_harness
+    assessment = review(verdict="uncertain", conclusive=False, original_resolved=False) if uncertain else None
+    backend_for(harness, Scripted(original=uncertain, assessment=assessment))
+    run(harness)
+    assert messages == []
+
+
+def test_focus_approval_email_is_sent_once_and_names_saved_allocation(emailed_harness):
+    harness, messages = emailed_harness
+    baseline = run(harness)["attempts"][0]["candidate_id"]
+    focus = allocation(role="focus", action="continue", max_tokens=160_000, baseline_candidates=[baseline])
+    run(harness, [focus])
+    pending = harness.propose([focus])[0]
+    assert pending.status == "pending_approval" and len(messages) == 1
+    assert pending.id in messages[0][2] and "approve" in messages[0][2]
+    assert harness.store.load().allocations[pending.id].status == "pending_approval"
+    harness.run_round()
+    assert len(messages) == 1
+
+
+def test_focus_approval_discovered_at_dispatch_is_saved_and_notified_once(emailed_harness):
+    harness, messages = emailed_harness
+    baseline = run(harness)["attempts"][0]["candidate_id"]
+    plan = harness.propose([allocation(role="focus", action="continue", max_tokens=160_000,
+                                      baseline_candidates=[baseline])])[0]
+    harness.campaign.problems[PACKET["id"]].focus_rounds = 1
+    harness.save()
+    assert harness.run_round()["attempts"] == []
+    assert harness.store.load().allocations[plan.id].status == "pending_approval" and len(messages) == 1
+    harness.run_round()
+    assert len(messages) == 1
+
+
+@pytest.mark.parametrize("error", [NotificationError("relay unavailable"), OSError("mail command unavailable"),
+                                  ValueError("invalid message header")])
+def test_email_delivery_failure_does_not_lose_candidate_or_change_progress(emailed_harness, monkeypatch, error):
+    harness, _ = emailed_harness
+    def fail(*args):
+        raise error
+    monkeypatch.setattr(notify, "send_email", fail)
+    backend_for(harness, Scripted(original=True))
+    result = run(harness)
+    candidate = harness.store.load().candidates[result["attempts"][0]["candidate_id"]]
+    assert candidate.status == "retained" and result["attempts"][0]["material_progress"]
+    assert harness.campaign.problems[PACKET["id"]].stagnation == 0
+    assert harness.notifier.log.read()[0]["kind"] == "notification_failed"

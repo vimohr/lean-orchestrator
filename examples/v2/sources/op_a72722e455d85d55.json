@@ -1,0 +1,43 @@
+{
+  "format": "prepared-source-notes/1",
+  "problem_id": "op_a72722e455d85d55",
+  "prepared_on": "2026-10-09",
+  "preparation": "Paraphrases of the cited passages, with separate checking status. Full primary manuscripts and executable certificates are not included.",
+  "entries": [
+    {
+      "key": "catalogue",
+      "url": "https://qiqc-op.com/problem/op_a72722e455d85d55/",
+      "locator": "Problem equations (1)-(3) and Comment; record dated 15 September 2026.",
+      "note": "The catalogue asks for the minimal length of a symmetric qubit code encoding one qubit and correcting two arbitrary errors. A proof for a narrower code family leaves a gap. The listed status is a catalogue designation.",
+      "content_license": "CC BY 4.0; see the attribution and adaptation notice in the task packet."
+    },
+    {
+      "key": "AAB24",
+      "url": "https://arxiv.org/html/2310.05358v3",
+      "locator": "Proposition 7.1 and Section 7; Theorem 5.3 and Example 5.",
+      "note": "For an odd-length real, parity-separated family, Proposition 7.1 reduces correction conditions to quadratic equations. Section 7 reports a nineteen-qubit solution obtained with msolve intervals enclosing a genuine root, with a Mathematica cross-check. Its approximate coefficients are not an independently verified certificate here. The shorter-length assertion for that family is given without proof. The explicit family in Theorem 5.3 has length 4t^2+2t+1, yielding a twenty-one-qubit benchmark at t=2.",
+      "checking_status": "Published construction reported by the source; not re-executed in this campaign."
+    },
+    {
+      "key": "BMO+26",
+      "url": "https://arxiv.org/html/2603.10981v1",
+      "locator": "Section 2.2; Section 3.1, Conjecture 3.1 and Figures 1-2; equation (12).",
+      "note": "The numerical study conjectures minimum length 3t^2+3t+1. Its searches first find two-error-correcting candidates at n=19. Optimization failure at shorter lengths is not an exclusion certificate. Equation (12) recalls the quantum Singleton constraint n >= 4t+1 for a nontrivial logical code, hence n >= 9 at t=2.",
+      "checking_status": "The minimum-length formula is conjectural numerical evidence; the Singleton bound is a separate established bound whose applicability must be checked."
+    },
+    {
+      "key": "KT26",
+      "url": "https://arxiv.org/html/2604.16023v2",
+      "locator": "Proposition B2; Appendix B-B; Appendix B-D and Remark B1.",
+      "note": "Proposition B2 identifies codes in symmetric powers with intrinsic codes while preserving dimension and distance. Appendix B presents linear-programming constraints on intrinsic enumerators. Its distance-three example excludes lengths below seven. This is not a distance-five exclusion for all lengths below nineteen.",
+      "checking_status": "Published preprint framework and stated distance-three example; no distance-five certificate has been computed for this campaign."
+    },
+    {
+      "key": "Tei26",
+      "url": "https://arxiv.org/html/2605.15372v1",
+      "locator": "Corollary 1, equation (79) in the inspected v1 HTML rendering.",
+      "note": "The intrinsic MacWilliams matrix is given by a terminating hypergeometric expression. In the qubit specialization, its entries can support exact linear-programming calculations at fixed n. Computing a transform alone does not prove that the relevant distance-five feasible region is empty.",
+      "checking_status": "Potential tool for a lower-bound approach, not a supplied solution."
+    }
+  ]
+}

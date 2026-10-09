@@ -4,6 +4,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from lean_orchestrator.notify import valid_email
 from lean_orchestrator.serde import from_dict
 
 from .models import Policy
@@ -18,15 +19,33 @@ class BackendConfig:
     timeout_seconds: float = 300
 
 
+NOTIFICATION_EVENTS = frozenset({"resolution_claimed", "approval_required", "run_stopped", "run_failed"})
+
+
+@dataclass
+class NotifyConfig:
+    email: str = ""
+    events: list[str] = field(default_factory=lambda: ["resolution_claimed", "approval_required", "run_stopped", "run_failed"])
+
+    def validate(self) -> None:
+        if not isinstance(self.email, str) or (self.email and not valid_email(self.email)):
+            raise ValueError("notify.email must be a single email address, or empty to disable notifications")
+        if (not isinstance(self.events, list) or not all(isinstance(event, str) for event in self.events)
+                or set(self.events) - NOTIFICATION_EVENTS):
+            raise ValueError(f"notify.events must contain only: {', '.join(sorted(NOTIFICATION_EVENTS))}")
+
+
 @dataclass
 class Config:
     policy: Policy = field(default_factory=Policy)
     solver: BackendConfig = field(default_factory=BackendConfig)
     coordinator: BackendConfig = field(default_factory=BackendConfig)
     reviewer: BackendConfig = field(default_factory=BackendConfig)
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
 
     def validate(self) -> None:
         self.policy.validate()
+        self.notify.validate()
         for role in (self.solver, self.coordinator, self.reviewer):
             if role.kind not in ("cli", "responses") or role.timeout_seconds <= 0:
                 raise ValueError("backend kind must be cli/responses and timeout positive")
@@ -59,6 +78,10 @@ docker_image = "python:3.11-slim" # provision a scientific image before starting
 focus_renewal_requires_approval = true
 lean_template = ""               # optional prepared OpenQ/Mathlib Lake project
 
+[notify]
+email = ""                      # optional recipient; 'run --email' overrides it for one invocation
+events = ["resolution_claimed", "approval_required", "run_stopped", "run_failed"]
+
 [solver]
 kind = "cli"
 command = ["codex", "exec", "--ignore-user-config", "--ephemeral", "--json", "--model", "gpt-6-astra", "--config", 'model_reasoning_effort="max"', "--sandbox", "workspace-write", "--skip-git-repo-check", "-"]
@@ -75,10 +98,12 @@ command = ["claude", "-p", "--model", "claude-opus-5-5", "--effort", "max", "--t
 
 def load_config(root: Path) -> Config:
     table = tomllib.loads((root / "harness.toml").read_text())
-    if set(table) - {"policy", "solver", "coordinator", "reviewer"}:
+    sections = {"policy": Policy, "notify": NotifyConfig,
+                "solver": BackendConfig, "coordinator": BackendConfig, "reviewer": BackendConfig}
+    if set(table) - set(sections):
         raise ValueError("unknown harness configuration table")
     for key, value in table.items():
-        cls = Policy if key == "policy" else BackendConfig
+        cls = sections[key]
         if set(value) - set(cls.__dataclass_fields__):
             raise ValueError(f"unknown configuration field in {key}")
     result = from_dict(Config, table)

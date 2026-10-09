@@ -2,13 +2,16 @@
 
 import copy
 import json
+import shlex
 import shutil
 import threading
 import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
+from lean_orchestrator.events import Console, EventLog
 from lean_orchestrator.jsonio import utc_now, write_json
+from lean_orchestrator.notify import Notifier
 from lean_orchestrator.serde import from_dict, to_dict
 
 from . import prompts
@@ -37,6 +40,8 @@ class Harness:
         self.backends = backends or {role: Backend(getattr(config, role)) for role in ("solver", "coordinator", "reviewer")}
         self.sandbox = sandbox or Sandbox(self.policy)
         self.lock = threading.RLock()
+        self.notifier = Notifier(config.notify.email, tuple(config.notify.events), Console(),
+                                 EventLog(store.root / "notifications.jsonl"), store.root, prefix="lean-orch-v2")
 
     def save(self) -> None:
         with self.lock:
@@ -51,6 +56,27 @@ class Harness:
 
     def _stopped(self) -> bool:
         return (self.store.root / "STOP").exists()
+
+    def _notify_approval(self, allocation: Allocation) -> None:
+        command = shlex.join(["lean-orch-v2", "-w", str(self.store.root), "approve", allocation.id,
+                              "--reason", "YOUR APPROVAL NOTES"])
+        self.notifier.notify("approval_required", f"focus renewal needs approval: {allocation.problem_id}",
+                             f"Allocation: {allocation.id}\nTarget: {allocation.target}\n"
+                             f"Remaining gap: {allocation.remaining_gap}\nWhy now: {allocation.why_now}\n"
+                             f"Budget: {allocation.max_tokens} tokens\n\nInspect REPORT.md, then approve with:\n{command}")
+
+    def _notify_resolution(self, candidate: Candidate) -> None:
+        problem = self.campaign.problems[candidate.problem_id]
+        command = shlex.join(["lean-orch-v2", "-w", str(self.store.root), "review", candidate.id,
+                              "--accept", "--reason", "YOUR REVIEW NOTES"])
+        self.notifier.notify("resolution_claimed", f"result awaiting human review: {problem.title}",
+                             f"An original-scope candidate passed internal checks and independent review.\n\n"
+                             f"Problem: {problem.id}\nCandidate: {candidate.id}\nStatement: {candidate.claim['statement']}\n"
+                             f"Verification evidence: {candidate.verification.get('evidence', 'see verification record')}\n"
+                             f"Human acceptance: {candidate.human_review}\n"
+                             f"External confirmation: {candidate.external_confirmation or 'none recorded'}\n\n"
+                             f"Frozen artifacts: {self.store.root / candidate.frozen_dir}\n"
+                             f"Inspect the proof and review records before accepting:\n{command}")
 
     def _round_limits(self, allocations: list[Allocation]) -> None:
         for role, slots in (("focus", self.policy.focus_slots), ("exploration", self.policy.exploration_slots)):
@@ -97,6 +123,9 @@ class Harness:
                 allocation.status = "pending_approval"
             self.campaign.allocations[allocation.id] = allocation
         self.save()
+        for allocation in prepared:
+            if allocation.status == "pending_approval":
+                self._notify_approval(allocation)
         return prepared
 
     def _validate_allocation(self, allocation: Allocation) -> None:
@@ -161,10 +190,16 @@ class Harness:
         allocations = [self.campaign.allocations[identifier] for identifier in allocation_ids] if allocation_ids else [
             item for item in self.campaign.allocations.values() if item.status == "proposed"]
         allocations = [item for item in allocations if item.status == "proposed"]
+        pending_approval = []
         for allocation in allocations:
             if (allocation.role == "focus" and self.campaign.problems[allocation.problem_id].focus_rounds
                     and self.policy.focus_renewal_requires_approval and not allocation.approved):
                 allocation.status = "pending_approval"
+                pending_approval.append(allocation)
+        if pending_approval:
+            self.save()
+            for allocation in pending_approval:
+                self._notify_approval(allocation)
         allocations = [item for item in allocations if item.status == "proposed"]
         self._round_limits(allocations)
         if not allocations:
@@ -429,9 +464,11 @@ class Harness:
         attempt.status = "completed" if attempt.effective else "review_inconclusive"
 
     def _integrate_round(self, number: int, attempts: list[Attempt]) -> None:
+        resolutions = []
         with self.lock:
             for problem_id in {item.problem_id for item in attempts}:
                 problem = self.campaign.problems[problem_id]
+                previous_status = problem.status
                 arms = [item for item in attempts if item.problem_id == problem_id]
                 research = [item for item in arms if item.role != "audit"]
                 progress = False
@@ -480,9 +517,19 @@ class Harness:
                     problem.revisit_condition = self.campaign.allocations[arms[-1].allocation_id].revisit_condition
                 problem.rounds.append({"round": number, "attempts": [item.id for item in arms], "counts_for_stagnation": counts,
                                        "material_progress": progress, "stagnation": problem.stagnation})
+                if previous_status != "awaiting_human" and problem.status == "awaiting_human":
+                    candidate = next((self.campaign.candidates[identifier] for identifier in problem.candidates
+                                      if self.campaign.candidates[identifier].status == "retained"
+                                      and self.campaign.candidates[identifier].claim["scope"] == "original"
+                                      and self.campaign.candidates[identifier].review.get("original_resolved")
+                                      and not self.campaign.candidates[identifier].review.get("remaining_gap", "").strip()), None)
+                    if candidate is not None:
+                        resolutions.append(copy.deepcopy(candidate))
             self.campaign.decisions.append({"actor": "harness", "action": "integrate_round", "round": number,
                                             "time": utc_now(), "usage": self.pool.ledger.summary()})
             self.save()
+        for candidate in resolutions:
+            self._notify_resolution(candidate)
 
     def revisit(self, problem_id: str, method: str, reason: str) -> None:
         if not method.strip() or not reason.strip():

@@ -38,6 +38,7 @@ def parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run")
     run.add_argument("--rounds", type=positive, default=1)
     run.add_argument("--no-plan", action="store_true", help="execute only already saved allocations")
+    run.add_argument("--email", help="notification recipient for this run, overriding [notify].email")
     commands.add_parser("status")
     commands.add_parser("usage")
     commands.add_parser("stop")
@@ -89,6 +90,49 @@ def report(store: Store) -> None:
     (store.root / "REPORT.md").write_text("\n".join(lines) + "\n")
 
 
+def run_campaign(harness: Harness, rounds: int, no_plan: bool) -> None:
+    first_round = harness.campaign.round
+    reason = "round limit reached"
+
+    def notify(event: str, outcome: str) -> None:
+        statuses = "\n".join(f"{problem.id}: {problem.status}" for problem in harness.campaign.problems.values())
+        attempts = "\n".join(f"{attempt.problem_id}/{attempt.id}: {attempt.status}"
+                             for attempt in harness.campaign.attempts.values() if attempt.round > first_round)
+        harness.notifier.notify(event, "run failed" if event == "run_failed" else "run finished",
+                                f"Reason: {outcome}\nRounds advanced: {harness.campaign.round - first_round}\n"
+                                f"Current round: {harness.campaign.round}\n\nProblems:\n{statuses}\n\n"
+                                f"Attempts:\n{attempts or '(none)'}\n\n"
+                                f"Usage:\n{json.dumps(harness.pool.ledger.summary(), indent=2)}\n\n"
+                                f"Report: {harness.store.root / 'REPORT.md'}")
+
+    try:
+        harness.recover_interrupted()
+        for _ in range(rounds):
+            if harness._stopped():
+                reason = "stop requested"
+                break
+            if not any(item.status == "proposed" for item in harness.campaign.allocations.values()):
+                if no_plan:
+                    reason = "no saved allocations"
+                    break
+                harness.propose()
+            result = harness.run_round()
+            print(json.dumps(result, indent=2))
+            if not result["attempts"]:
+                reason = result.get("reason", "no allocations could be admitted")
+                break
+        if harness._stopped():
+            reason = "stop requested"
+        report(harness.store)
+    except KeyboardInterrupt:
+        notify("run_stopped", "interrupted")
+        raise
+    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as error:
+        notify("run_failed", str(error))
+        raise
+    notify("run_stopped", reason)
+
+
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     try:
@@ -133,23 +177,16 @@ def main(argv=None) -> int:
                 store.save(campaign)
                 print(problem.id)
             else:
-                harness = Harness(store, load_config(store.root))
+                config = load_config(store.root)
+                if args.command == "run" and args.email is not None:
+                    config = replace(config, notify=replace(config.notify, email=args.email))
+                harness = Harness(store, config)
                 if args.command == "plan":
                     proposals = json.loads(args.allocations.read_text()) if args.allocations else None
                     print(json.dumps([to_dict(item) for item in harness.propose(proposals)], indent=2))
                 elif args.command == "run":
-                    harness.recover_interrupted()
-                    for _ in range(args.rounds):
-                        if harness._stopped():
-                            break
-                        if not any(item.status == "proposed" for item in harness.campaign.allocations.values()):
-                            if args.no_plan:
-                                break
-                            harness.propose()
-                        result = harness.run_round()
-                        print(json.dumps(result, indent=2))
-                        if not result["attempts"]:
-                            break
+                    run_campaign(harness, args.rounds, args.no_plan)
+                    return 0
                 elif args.command == "approve":
                     harness.approve(args.allocation, args.reason)
                 elif args.command == "revisit":
@@ -158,6 +195,9 @@ def main(argv=None) -> int:
                     harness.human_review(args.candidate, args.accept, args.reason, args.external_confirmation)
             report(store)
         return 0
+    except KeyboardInterrupt:
+        print("lean-orch-v2: interrupted", file=sys.stderr)
+        return 130
     except (ValueError, OSError, KeyError, TypeError, RuntimeError) as error:
         print(f"lean-orch-v2: {error}", file=sys.stderr)
         return 1

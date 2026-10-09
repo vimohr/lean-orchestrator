@@ -196,6 +196,56 @@ calls retain their unknown-usage planning charges. The coordinator can propose
 performs submission/assessment without another research phase. The original
 failure and usage stay in the archive.
 
+## Email notifications
+
+Notifications are optional and disabled when the recipient is empty. New
+campaigns include this section in `harness.toml`; existing campaigns can add it:
+
+```toml
+[notify]
+email = "you@example.org"
+events = ["resolution_claimed", "approval_required", "run_stopped", "run_failed"]
+```
+
+| Event | When it is sent |
+| --- | --- |
+| `resolution_claimed` | An internally retained original-scope result moves its problem to `awaiting_human`. Restricted and inconclusive results do not trigger it. Multiple arms resolving one problem send one alert. |
+| `approval_required` | A focus renewal is held for human approval, either during planning or when a saved plan is checked before dispatch. |
+| `run_stopped` | A `run` invocation ends, including its round limit, a stop request, no admissible work, or an interruption. The message includes problem status, usage, and the report location. |
+| `run_failed` | A `run` invocation aborts with an error. |
+
+Messages use the subject prefix `lean-orch-v2:`. Review and approval alerts name
+the saved candidate or allocation and include the corresponding CLI command.
+Research state is saved before these alerts are sent. Restart recovery does not
+resend an already integrated resolution. Delivery errors are printed and
+recorded in `notifications.jsonl` without failing the research run.
+
+To override the recipient for one run without editing the saved configuration:
+
+```sh
+lean-orch-v2 -w ~/lean-orch-v2-session run --rounds 3 --email you@example.org
+```
+
+Configured event filters still apply. Use `--email ""` to disable delivery for
+that invocation. Standalone `plan` commands use the recipient in `harness.toml`.
+
+Delivery uses the same transport as v1: an SMTP relay when
+`LEAN_ORCH_SMTP_HOST` is set, otherwise a local `sendmail`, `mail`, or `mailx`
+command. For an SMTP relay, set the environment before launching:
+
+```sh
+export LEAN_ORCH_SMTP_HOST="smtp.example.org"
+export LEAN_ORCH_SMTP_PORT="587"
+export LEAN_ORCH_SMTP_SECURITY="starttls"
+export LEAN_ORCH_EMAIL_FROM="research-bot@example.org"
+```
+
+If authentication is required, also set `LEAN_ORCH_SMTP_USERNAME` and
+`LEAN_ORCH_SMTP_PASSWORD` together. Credentials stay in the environment.
+Supported security modes are `starttls`, `ssl`, and `none`; authentication
+requires TLS. An existing v1 transport setup works with v2. There is no need to
+change the calculation sandbox for email delivery.
+
 ## Record layout and accounting
 
 | Path | Content |
@@ -211,6 +261,7 @@ failure and usage stay in the archive.
 | `reviews/ID/` | Separate review workspace with frozen artifacts. |
 | `calls/ID/` | Requests, replies, stdout/stderr, usage and failure metadata. |
 | `usage.jsonl` | Durable call admission and settlement journal. |
+| `notifications.jsonl` | Email delivery outcomes and errors. |
 
 The campaign token limit is an admission limit over known spend plus unknown
 charges and active allocation leases. Returned usage can overshoot a reserve;

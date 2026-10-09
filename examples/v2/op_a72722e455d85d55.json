@@ -1,0 +1,101 @@
+{
+  "id": "op_a72722e455d85d55",
+  "title": "Minimal permutation-invariant qubit code for two errors",
+  "original_statement": "Determine whether n_min^PI(2) = 19, where n_min^PI(2) = min{n >= 1 : there exists a complex two-dimensional subspace Q of Sym^n(C^2) with distance d(Q) >= 5}. Sym^n(C^2) consists of n-qubit vectors fixed by every qubit permutation. In an orthonormal logical basis, write |a_L> = sum_{w=0}^n c_{a,w}|D_w^n>, a in {0,1}, with unrestricted complex coefficients and |D_w^n> = binom(n,w)^(-1/2) sum_{x in {0,1}^n, |x|=w}|x>. Require sum_w conjugate(c_{a,w})c_{b,w} = delta_ab and <a_L|E|b_L> = lambda_E delta_ab for every n-qubit Pauli tensor E of weight at most 4, with lambda_E independent of a,b. These conditions correct arbitrary errors supported on at most two qubits. Use the published nineteen-qubit existence result as the literature baseline, checking its certificate before relying on it. Establish minimality by excluding every shorter length, or disprove it with a rigorously certified shorter code.",
+  "scope_contract": {
+    "quantifiers": [
+      "All candidate two-dimensional complex subspaces of Sym^n(C^2); a lower bound must cover n = 1,...,18.",
+      "All normalized orthogonal logical bases and complex Dicke amplitudes, including zeros and degenerate cases.",
+      "All locations and operators for errors on at most two qubits; equivalently detect every Pauli tensor of weight 0 through 4.",
+      "Both even and odd block lengths."
+    ],
+    "dimensions": [
+      "Physical local dimension 2; total n-qubit Hilbert-space dimension 2^n.",
+      "Symmetric-subspace dimension n+1; logical dimension exactly 2; target distance at least 5."
+    ],
+    "allowed_resources": [
+      "Any subspace code within the symmetric sector; recovery operations are unrestricted.",
+      "Analytic arguments, exact algebra, rigorously bounded computations, and formal verification.",
+      "Numerical optimization may find candidates; feasibility and global exclusion require justified certificates.",
+      "A restricted family may be studied as partial progress, with its gap to unrestricted codes stated explicitly."
+    ],
+    "conventions": [
+      "Permutation invariance is pointwise invariance of every code vector.",
+      "Dicke states are normalized; w counts ones in the computational basis.",
+      "Distance five corresponds to two arbitrary correctable errors, not five correctable errors.",
+      "Pauli weight counts nonidentity tensor factors. The compression scalar may depend on E, but not on logical indices.",
+      "Gauge fixing, real amplitudes, support patterns, or codeword symmetries require a proof of completeness before supporting a universal lower bound."
+    ],
+    "source_locators": [
+      "QIQCOP op_a72722e455d85d55: Problem, equations (1)-(3), Progress, and Comment.",
+      "arXiv:2310.05358v3: Proposition 7.1 and Section 7; Theorem 5.3 and Example 5.",
+      "arXiv:2603.10981v1: Section 2.2, Section 3.1, Conjecture 3.1, and equation (12).",
+      "arXiv:2604.16023v2: Proposition B2 and Appendix B-D.",
+      "arXiv:2605.15372v1: Corollary 1, equation (79)."
+    ],
+    "unresolved": []
+  },
+  "sources": [
+    {
+      "path": "sources/op_a72722e455d85d55.json",
+      "locator": "Prepared, paraphrased source notes; each entry identifies its primary URL, version, and section.",
+      "preparation": "Source notes are cached locally for both solving and independent review. They are not full manuscripts or campaign-verified proofs."
+    }
+  ],
+  "provenance": {
+    "source_url": "https://qiqc-op.com/problem/op_a72722e455d85d55/",
+    "retrieved_on": "2026-10-09",
+    "catalogue_status_at_capture": "Unsolved",
+    "catalogue_record_last_edited": "2026-09-15",
+    "catalogue_literature_checked_through": "2026-09-15",
+    "changes": "Rephrased the task and made scope, evidence requirements, and source checking status explicit for a v2 packet.",
+    "catalogue_content_license": "CC BY 4.0",
+    "catalogue_content_license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "catalogue_citation": "Quantum Information and Quantum Computation Open Problem Zoo, problem op_a72722e455d85d55, accessed 9 October 2026.",
+    "mathematical_checking_status": "Primary passages were inspected during preparation; no constructions or lower-bound certificates have been independently re-executed or formally verified by this campaign."
+  },
+  "success_criteria": {
+    "original_scope": [
+      "Prove nonexistence for every n < 19 without an unproved restriction, and establish or verify the n=19 existence baseline.",
+      "Alternatively, give a shorter symmetric two-dimensional code with a complete exact or rigorously bounded verification of every required error condition."
+    ],
+    "restricted_scope": [
+      "A new certified excluded length, stronger universal bound, validated reduction, or obstruction for a stated family may be retained as partial progress.",
+      "Name the remaining lengths, coefficient classes, or missing completeness argument."
+    ],
+    "insufficient_evidence": [
+      "Repeating a known nineteen-qubit construction does not by itself establish minimality.",
+      "Failed local optimization, equation counting, small residuals, and exhaustive-looking finite sampling do not by themselves prove nonexistence.",
+      "A result for real coefficients or a parity/mirror ansatz requires an additional argument to cover unrestricted complex codes and both length parities."
+    ]
+  },
+  "suggested_first_steps": [
+    "Reconstruct the symmetric-sector error-compression equations and justify that the selected operator basis covers all required Pauli errors.",
+    "Check the published upper-bound certificate and the applicability of the quantum Singleton bound; its distance-five specialization rules out n <= 8.",
+    "Investigate intrinsic MacWilliams bounds for K=2 and distance five at n=9,...,18; retain exact dual certificates for any exclusion and identify cases where the relaxation is inconclusive.",
+    "Use restricted polynomial families only as explicit subproblems unless their coverage of all codes is proved."
+  ],
+  "references": [
+    {
+      "key": "AAB24",
+      "citation": "A. Aydin, M. A. Alekseyev, A. Barg, A family of permutationally invariant quantum codes, Quantum 8, 1321 (2024).",
+      "url": "https://arxiv.org/html/2310.05358v3",
+      "doi": "10.22331/q-2024-04-30-1321"
+    },
+    {
+      "key": "BMO+26",
+      "citation": "L. J. Bond, J. Minar, M. Ozols, A. Safavi-Naini, V. Visnevskyi, Permutation-invariant codes: a numerical study and qudit constructions (2026).",
+      "url": "https://arxiv.org/html/2603.10981v1"
+    },
+    {
+      "key": "KT26",
+      "citation": "E. Kubischta, I. Teixeira, MacWilliams Identities for Intrinsic Quantum Codes (2026).",
+      "url": "https://arxiv.org/html/2604.16023v2"
+    },
+    {
+      "key": "Tei26",
+      "citation": "I. Teixeira, Orthogonal Polynomials and the MacWilliams Transform for Permutation-Invariant Qudit Codes (2026).",
+      "url": "https://arxiv.org/html/2605.15372v1"
+    }
+  ]
+}

@@ -5,6 +5,9 @@ Two engines are available: `lean-orch` runs the portfolio loop described below;
 bounded research rounds. See the [2.0 guide](docs/ORCHESTRATOR_V2.md) for its
 workflow, configuration, and an offline demonstration.
 
+V2 also supports email alerts configured in `harness.toml` or with
+`lean-orch-v2 run --email you@example.org`, using the same mail transport as v1.
+
 `lean-orch` runs an autonomous research loop over a portfolio of open problems
 in quantum information. Disposable CLI agents (`codex exec`, `claude -p`) take
 the roles of researcher, skeptic, supervisor, literature agent, and triage
