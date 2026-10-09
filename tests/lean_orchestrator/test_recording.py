@@ -141,7 +141,7 @@ def test_repeated_approaches_are_detected_lexically():
         (3, None, False, 1),
         (2, "informal", False, 1),
         (2, "reproduced", False, 2),
-        (1, "lean", False, 2),
+        (1, "lean", False, 1),
         (2, "reproduced", True, 0),
     ],
 )
@@ -156,7 +156,8 @@ def test_progress_scores_are_grounded_in_artifacts(supervisor, gain_kind, repeat
         outcome.lean_verified = ["C1"]
     if repeated:
         outcome.repeat_of = ["A0"]
-    assessment = {"progress_score": supervisor, "categories": [], "justification": "j", "repeated_approach": False}
+    assessment = {"progress_score": supervisor, "categories": [], "justification": "j", "repeated_approach": repeated,
+                  "effective_attempt": True, "material_advance": True, "gap_addressed": "planned gap"}
     record = score_progress(current, stamp=Stamp(1, 1), assessment=assessment, outcome=outcome,
                             progress=ProgressConfig())
     assert record.effective_score == expected
@@ -167,10 +168,52 @@ def test_stagnation_resets_on_meaningful_progress():
     current = state()
     current.stagnation_count = 3
     outcome = IterationOutcome(attempt_id="A1", lean_verified=["C1"])
-    score_progress(current, stamp=Stamp(1, 1), assessment=None, outcome=outcome, progress=ProgressConfig())
+    assessment = {"progress_score": 2, "material_advance": True, "gap_addressed": "planned gap", "effective_attempt": True}
+    score_progress(current, stamp=Stamp(1, 1), assessment=assessment, outcome=outcome, progress=ProgressConfig())
     assert current.stagnation_count == 0
     score_progress(current, stamp=Stamp(1, 2), assessment=None, outcome=None, progress=ProgressConfig())
-    assert current.stagnation_count == 1
+    assert current.stagnation_count == 0
+
+
+@pytest.mark.parametrize("outcome", [None, IterationOutcome("A1", review_conclusive=False),
+                                     IterationOutcome("A1", completed=False)])
+def test_incomplete_attempt_does_not_change_existing_stagnation(outcome):
+    current = state()
+    current.stagnation_count = 3
+    current.branch("B1").stagnation = 2
+    record = score_progress(current, stamp=Stamp(1, 1), assessment={"progress_score": 0},
+                            outcome=outcome, progress=ProgressConfig())
+    assert not record.counts_for_stagnation
+    assert current.stagnation_count == 3 and current.branch("B1").stagnation == 2
+
+
+def test_correct_artifact_without_material_gap_advance_is_minor():
+    current = state()
+    record = score_progress(current, stamp=Stamp(1, 1), assessment={"progress_score": 3, "material_advance": False},
+                            outcome=IterationOutcome("A1", lean_verified=["C1"]), progress=ProgressConfig())
+    assert record.effective_score == 1 and current.stagnation_count == 1
+
+
+def test_lexical_repeat_can_make_material_progress():
+    record = score_progress(state(), stamp=Stamp(1, 1),
+                            assessment={"progress_score": 2, "material_advance": True, "gap_addressed": "new rank case"},
+                            outcome=IterationOutcome("A1", lean_verified=["C1"], repeat_of=["A0"]),
+                            progress=ProgressConfig())
+    assert record.effective_score == 2
+
+
+def test_verifier_execution_failure_is_not_mathematical_stagnation():
+    current = state()
+    current.stagnation_count = 2
+    check = ExperimentCheck("exp", ran=True, exit_code=124, errors=["timed out"])
+    outcome = record_iteration(current, stamp=Stamp(1, 1), plan={"branch": "B1"},
+                               report=_report(claims=[{"id": "c1", "kind": "numerical_evidence", "statement": "claim", "argument": "a"}],
+                                              dead_ends=[]),
+                               verification=IterationVerification(claims={"c1": ClaimVerification("c1", experiment=check)}),
+                               critique={"reviews": [review()], "overall": "unknown"})
+    record = score_progress(current, stamp=Stamp(1, 1), assessment={"progress_score": 0},
+                            outcome=outcome, progress=ProgressConfig())
+    assert not outcome.completed and not record.counts_for_stagnation and current.stagnation_count == 2
 
 
 def test_apply_decision_opens_labelled_branches_and_maps_the_plan():

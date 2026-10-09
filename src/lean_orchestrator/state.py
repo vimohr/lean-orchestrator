@@ -8,6 +8,7 @@ orchestrator writes ``state.json``; agents read it through ``PROGRESS.md``.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from .jsonio import read_json, utc_now, write_json
 from .serde import from_dict, to_dict
@@ -93,6 +94,7 @@ class Attempt:
     claims: list[str] = field(default_factory=list)
     effective_score: int | None = None
     repeat_of: list[str] = field(default_factory=list)
+    execution_status: str = "completed"
     created: Stamp | None = None
 
 
@@ -176,6 +178,10 @@ class ProgressRecord:
     categories: list[str] = field(default_factory=list)
     justification: str = ""
     adjustments: list[str] = field(default_factory=list)
+    counts_for_stagnation: bool = True
+    gap_addressed: str = ""
+    remaining_gap: str = ""
+    next_allocation_value: str = ""
     time: str = field(default_factory=utc_now)
 
 
@@ -219,6 +225,9 @@ class ResearchState:
     statement_versions: list[StatementVersion] = field(default_factory=list)
     success_criteria: str = ""
     assumptions: list[str] = field(default_factory=list)
+    scope_contract: dict[str, Any] = field(default_factory=dict)
+    checkpoint: str = ""
+    revisit_condition: str = ""
     literature: LiteratureStatus = field(default_factory=LiteratureStatus)
     references: list[Reference] = field(default_factory=list)
     known_results: list[KnownResult] = field(default_factory=list)

@@ -55,6 +55,9 @@ def format_plan(plan: dict[str, Any]) -> str:
         lines.append(f"- How this differs from earlier attempts: {plan['novelty']}")
     if plan.get("deliverables"):
         lines.append("- Deliverables: " + "; ".join(plan["deliverables"]))
+    for key in ("baseline", "remaining_gap", "why_now", "alternative", "reversal_condition"):
+        if plan.get(key):
+            lines.append(f"- {key.replace('_', ' ').capitalize()}: {plan[key]}")
     return "\n".join(lines)
 
 
@@ -106,7 +109,7 @@ def warnings_block(state: ResearchState, plan: dict[str, Any], violations: list[
     lines = []
     text = f"{plan.get('goal', '')} {plan.get('instructions', '')}"
     for attempt in state.attempts:
-        if attempt.outcome == "success":
+        if attempt.outcome == "success" or attempt.execution_status != "completed":
             continue
         if similarity(text, f"{attempt.fingerprint} {attempt.description}") >= 0.35:
             lines.append(f"- This step resembles failed attempt {attempt.id} ({attempt.approach}): "
@@ -152,7 +155,13 @@ Score its information gain honestly in `assessment.progress_score`:
 - 3: major: a Lean-verified significant part of the argument, a main reduction, or a resolution.
 
 The orchestrator caps scores that are not backed by accepted, verified artifacts, so do not inflate.
-Set `repeated_approach` when the iteration repeated earlier failed work."""
+Set `repeated_approach` only for actual repeated mathematical work; lexical similarity is a warning.
+Judge correctness separately from progress on the original question. A Lean proof or reproducible
+number is insufficient by itself. Set `material_advance` and `gap_addressed` only when accepted
+evidence meets the plan's success test and changes its declared gap beyond the saved baseline.
+Record `remaining_gap` and `next_allocation_value`, including why another attempt deserves budget.
+Set `effective_attempt` false for incomplete execution, missing submissions, or inconclusive review;
+those attempts cost resources but do not count as mathematical stagnation."""
 
 
 def epoch_end_instructions(ending: bool) -> str:

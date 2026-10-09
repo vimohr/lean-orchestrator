@@ -87,6 +87,14 @@ LITERATURE_SCHEMA: dict[str, Any] = {
         "precise_statement": {"type": "string", "minLength": 1},
         "success_criteria": {"type": "string", "minLength": 1},
         "assumptions": _TEXT_LIST,
+        "scope_contract": {
+            "type": "object",
+            "required": ["quantifiers", "dimensions", "allowed_resources", "conventions", "source_locators", "unresolved"],
+            "properties": {key: _TEXT_LIST for key in (
+                "quantifiers", "dimensions", "allowed_resources", "conventions", "source_locators", "unresolved"
+            )},
+            "additionalProperties": False,
+        },
         "references": {"type": "array", "items": _REFERENCE},
         "known_results": {
             "type": "array",
@@ -132,13 +140,20 @@ SUPERVISOR_SCHEMA: dict[str, Any] = {
         "assessment": {
             "type": ["object", "null"],
             "description": "Assessment of the iteration just recorded; null when no iteration has run yet in this epoch.",
-            "required": ["progress_score", "categories", "justification", "repeated_approach"],
+            "required": ["progress_score", "categories", "justification", "repeated_approach",
+                         "effective_attempt", "material_advance", "gap_addressed", "remaining_gap",
+                         "next_allocation_value"],
             "properties": {
                 "progress_score": {"type": "integer", "minimum": 0, "maximum": 3},
                 "categories": {"type": "array", "items": {"enum": list(PROGRESS_CATEGORIES)}},
                 "justification": {"type": "string", "minLength": 1},
                 "repeated_approach": {"type": "boolean"},
                 "repeats": _TEXT_LIST,
+                "effective_attempt": {"type": "boolean"},
+                "material_advance": {"type": "boolean"},
+                "gap_addressed": _STRING,
+                "remaining_gap": _STRING,
+                "next_allocation_value": _STRING,
             },
             "additionalProperties": False,
         },
@@ -189,10 +204,16 @@ SUPERVISOR_SCHEMA: dict[str, Any] = {
                     "description": "How this step differs from every earlier failed attempt and dead end.",
                 },
                 "deliverables": _TEXT_LIST,
+                "baseline": _STRING,
+                "remaining_gap": _STRING,
+                "why_now": _STRING,
+                "alternative": _STRING,
+                "reversal_condition": _STRING,
             },
             "additionalProperties": False,
         },
         "promising_directions": _TEXT_LIST,
+        "revisit_condition": _STRING,
         "assessment_text": {"type": "string", "minLength": 1},
         "statement_refinement": {
             "type": ["object", "null"],
@@ -222,6 +243,7 @@ RESEARCHER_SCHEMA: dict[str, Any] = {
     "required": ["summary", "approach", "outcome", "claims"],
     "properties": {
         "summary": {"type": "string", "minLength": 1},
+        "checkpoint": {**_STRING, "description": "Workspace-relative path to the latest complete mathematical draft."},
         "approach": {
             "type": "object",
             "required": ["name", "description", "fingerprint"],

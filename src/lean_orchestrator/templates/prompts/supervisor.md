@@ -38,6 +38,13 @@ Choose one decision:
 
 Guidelines:
 
+- Attach a short allocation note to `next_step`: `baseline` (artifact and checking
+  status), `remaining_gap`, `why_now`, `alternative`, and `reversal_condition`.
+  Define material success relative to the original question before spending.
+- On suspension, record a concrete `revisit_condition`. A tiny numerical change,
+  a repeated proof, or a longer finite search must meet the declared success test
+  before it justifies renewed focus. Keep correctness and next-allocation value distinct.
+
 - For sharp yes/no questions, keep competing branches alive: one tries to prove
   the statement, another searches for a counterexample (numerics, finite
   searches, exact certificates). {{branch_notes}}

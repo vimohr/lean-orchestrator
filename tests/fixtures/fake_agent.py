@@ -149,7 +149,10 @@ elif role == "supervisor":
     score = {"progress": 2, "tamper": 2, "stagnate": 0, "resolve": 3}.get(scenario, 1)
     decision = {
         "assessment": ({"progress_score": score, "categories": ["new_lemma"] if score else ["none"],
-                        "justification": "Scored by the fake supervisor.", "repeated_approach": False}
+                        "justification": "Scored by the fake supervisor.", "repeated_approach": False,
+                        "effective_attempt": scenario != "garbage", "material_advance": score >= 2,
+                        "gap_addressed": "The planned certificate was established." if score >= 2 else "",
+                        "remaining_gap": "General dimensions.", "next_allocation_value": "Extend the certificate."}
                        if after_iteration else None),
         "decision": "continue",
         "rationale": "Keep going.",

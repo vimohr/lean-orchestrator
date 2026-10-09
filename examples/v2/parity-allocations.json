@@ -1,0 +1,19 @@
+[
+  {
+    "problem_id": "consecutive-parity",
+    "role": "exploration",
+    "action": "explore",
+    "target_scope": "original",
+    "target": "Prove the parity statement for every integer.",
+    "baseline": "No inherited result; this is an elementary demonstration problem.",
+    "remaining_gap": "A proof covering every integer.",
+    "method": "parity cases",
+    "success_evidence": "A complete elementary proof; finite checks are illustrative only.",
+    "why_now": "A small opening that exercises the full artifact and checking workflow.",
+    "alternative": "Explore a different finite problem.",
+    "reversal_condition": "Inspect any failed parity case before further generation.",
+    "revisit_condition": "A new method addressing a recorded obstruction.",
+    "max_tokens": 80000,
+    "baseline_candidates": []
+  }
+]

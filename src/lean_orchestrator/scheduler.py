@@ -61,6 +61,9 @@ class Scheduler:
             return False
         if entry.consecutive_failures >= self.config.loop.max_consecutive_failures:
             return False
+        if (entry.status == SUSPENDED and self.config.scheduler.require_revisit_trigger
+                and not self.relevance(entry.id, entry.last_global_epoch)):
+            return False
         if entry.status == UNEXPLORED:
             return not self.config.triage.enabled
         return entry.status in (CANDIDATE, ACTIVE, SUSPENDED)

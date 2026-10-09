@@ -1,0 +1,14 @@
+{
+  "id": "consecutive-parity",
+  "title": "Consecutive integer products",
+  "original_statement": "For every integer n, n(n+1) is even.",
+  "scope_contract": {
+    "quantifiers": ["all integers n"],
+    "dimensions": [],
+    "allowed_resources": [],
+    "conventions": ["even means divisible by 2"],
+    "source_locators": [],
+    "unresolved": []
+  },
+  "sources": []
+}

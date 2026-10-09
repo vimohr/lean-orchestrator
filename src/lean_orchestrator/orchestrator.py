@@ -335,7 +335,7 @@ class Orchestrator:
 
         def budget_left() -> bool:
             return (max_epochs == 0 or launched < max_epochs) and (
-                max_hours == 0 or time.monotonic() - started < max_hours * 3600)
+                max_hours == 0 or time.monotonic() - started < max_hours * 3600) and services.agents.usage.can_start()
 
         try:
             while True:

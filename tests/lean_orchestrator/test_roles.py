@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from support import fake_config, quiet_console
 
-from lean_orchestrator.agents import AgentRunner
+from lean_orchestrator.agents import AgentError, AgentRunner, AgentStopped
 from lean_orchestrator.config import parse_config
 from lean_orchestrator.events import EventLog
 from lean_orchestrator.integrity import IntegrityGuard
@@ -86,3 +86,41 @@ def test_violations_during_a_call_are_reported(tmp_path):
     assert protected.read_text() == "original"
     assert json.loads((tmp_path / "out" / "triage.json").read_text()) == VALID_TRIAGE
     assert parse_config({}).agents.max_repair_attempts == 1
+
+
+@pytest.mark.parametrize("stopped", [False, True])
+def test_complete_researcher_report_survives_failure_but_stop_is_respected(tmp_path, monkeypatch, stopped):
+    runner, guard = role_runner(tmp_path, "")
+    monkeypatch.setattr(runner.prompts, "render", lambda *args, **kwargs: "submit")
+    output = tmp_path / "report.json"
+    report = {"summary": "Saved work", "approach": {"name": "x", "description": "x", "fingerprint": "x"},
+              "outcome": "partial", "claims": []}
+    run_dir = tmp_path / "failed-run"
+    run_dir.mkdir()
+    def fail(*args, **kwargs):
+        output.write_text(json.dumps(report))
+        error = AgentStopped if stopped else AgentError
+        raise error("transport failed after saving", run_dir)
+    monkeypatch.setattr(runner.agents, "run", fail)
+    kwargs = dict(tag="t", problem_id="p", output_path=output, values={})
+    if stopped:
+        with pytest.raises(AgentStopped):
+            runner.call("researcher", **kwargs)
+    else:
+        result = runner.call("researcher", **kwargs)
+        assert result.data == report and result.recovered_from
+        assert guard.is_protected(output) and output.with_name("recovery.json").exists()
+
+
+def test_execution_failure_with_partial_json_is_not_salvaged(tmp_path, monkeypatch):
+    runner, _ = role_runner(tmp_path, "")
+    monkeypatch.setattr(runner.prompts, "render", lambda *args, **kwargs: "submit")
+    run_dir = tmp_path / "failed-run"
+    run_dir.mkdir()
+    output = tmp_path / "report.json"
+    def fail(*args, **kwargs):
+        output.write_text('{"summary":')
+        raise AgentError("timeout", run_dir)
+    monkeypatch.setattr(runner.agents, "run", fail)
+    with pytest.raises(AgentError, match="timeout"):
+        runner.call("researcher", tag="t", problem_id="p", output_path=output, values={})

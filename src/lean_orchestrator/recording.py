@@ -14,9 +14,9 @@ lower a claim's standing, never raise it past what the machine checks support:
 
 Progress is scored by the supervisor but grounded here. Accepted artifacts are
 weighted by how they were checked, and an iteration scores as meaningful progress
-only when the weighted gain reaches ``progress.meaningful_gain``. A new
-Lean-verified result is always meaningful, and repeating a failed approach
-counts as stagnation.
+only when the weighted gain reaches ``progress.meaningful_gain`` and the
+supervisor identifies a material advance on the declared gap. Execution failures
+and inconclusive reviews do not measure mathematical stagnation.
 """
 
 from __future__ import annotations
@@ -54,6 +54,8 @@ class IterationOutcome:
     repeat_of: list[str] = field(default_factory=list)
     lock_files: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    review_conclusive: bool = True
+    completed: bool = True
 
     def weighted_gain(self, weights: ProgressConfig) -> float:
         """Accepted artifacts weighted by the strength of their verification."""
@@ -82,7 +84,7 @@ def find_repeats(state: ResearchState, fingerprint: str, description: str) -> li
     """Earlier unsuccessful attempts whose approach closely matches this one."""
     repeats = []
     for attempt in state.attempts:
-        if attempt.outcome == "success":
+        if attempt.outcome == "success" or attempt.execution_status != "completed":
             continue
         score = max(
             similarity(fingerprint, attempt.fingerprint),
@@ -156,6 +158,22 @@ def record_iteration(
     approach = report.get("approach", {})
     outcome = IterationOutcome(attempt_id=state.next_id("A"))
     reviews = {review["claim"]: review for review in (critique or {}).get("reviews", [])}
+    outcome.completed = report.get("outcome") != "inconclusive"
+    outcome.review_conclusive = all(
+        reviews.get(claim["id"], {}).get("verdict") in ("accept", "reject")
+        for claim in report.get("claims", [])
+    ) and (not report.get("dead_ends") or critique is not None)
+    for claim in report.get("claims", []):
+        checked = verification.claims.get(claim["id"])
+        experiment = checked.experiment if checked else None
+        unavailable = bool(claim.get("lean") and not verification.lean_available)
+        failed_execution = bool(experiment and not experiment.ok
+                                and (not experiment.ran or experiment.exit_code not in (None, 0)))
+        if unavailable or failed_execution:
+            outcome.completed = False
+            outcome.notes.append("machine verification could not execute: excluded from mathematical stagnation")
+    if report.get("checkpoint"):
+        state.checkpoint = report["checkpoint"]
 
     for claim in report.get("claims", []):
         global_id = state.next_id("C")
@@ -279,6 +297,7 @@ def record_iteration(
         lesson=report.get("lessons", "") or (critique or {}).get("overall", ""),
         claims=list(outcome.claim_ids.values()),
         repeat_of=outcome.repeat_of,
+        execution_status=("completed" if outcome.completed and outcome.review_conclusive else "inconclusive"),
         created=stamp,
     ))
     branch = state.branch(branch_id)
@@ -292,7 +311,7 @@ def record_failed_iteration(state: ResearchState, *, stamp: Stamp, plan: dict[st
     attempt_id = state.next_id("A")
     state.attempts.append(Attempt(
         id=attempt_id, approach="(no report)", description=reason, outcome="inconclusive",
-        branch=(plan or {}).get("branch"), failure_reason=reason, created=stamp,
+        branch=(plan or {}).get("branch"), failure_reason=reason, execution_status="execution_failed", created=stamp,
     ))
     return attempt_id
 
@@ -335,7 +354,10 @@ def score_progress(
     supervisor_score = int(assessment.get("progress_score", 0)) if assessment else 0
     score = supervisor_score
     adjustments: list[str] = []
-    repeated = bool(assessment and assessment.get("repeated_approach")) or bool(outcome and outcome.repeat_of)
+    # Lexical matches are warnings for the supervisor, not proof of mathematical repetition.
+    repeated = bool(assessment and assessment.get("repeated_approach"))
+    effective = bool(outcome is not None and outcome.completed and outcome.review_conclusive
+                     and assessment and assessment.get("effective_attempt", True))
     if outcome is None:
         score = 0
         adjustments.append("the iteration produced no usable report")
@@ -349,9 +371,13 @@ def score_progress(
             adjustments.append(
                 f"weighted artifact gain {gain:g} is below {progress.meaningful_gain:g}: capped at 1"
             )
-        if outcome.lean_verified and score < 2 and not repeated:
-            score = 2
-            adjustments.append("a new Lean-verified result: raised to 2")
+        if score >= progress.threshold and not (assessment and assessment.get("material_advance")
+                                                and assessment.get("gap_addressed", "").strip()):
+            score = min(score, progress.threshold - 1)
+            adjustments.append("no explicit material advance on the declared gap: capped below meaningful progress")
+    if not effective:
+        score = 0
+        adjustments.append("execution or assessment incomplete: excluded from mathematical stagnation")
     threshold = progress.threshold
     record = ProgressRecord(
         epoch=stamp.epoch,
@@ -361,6 +387,10 @@ def score_progress(
         categories=list(assessment.get("categories", [])) if assessment else [],
         justification=assessment.get("justification", "") if assessment else "",
         adjustments=adjustments,
+        counts_for_stagnation=effective,
+        gap_addressed=(assessment or {}).get("gap_addressed", ""),
+        remaining_gap=(assessment or {}).get("remaining_gap", ""),
+        next_allocation_value=(assessment or {}).get("next_allocation_value", ""),
     )
     state.progress.append(record)
     if outcome is not None:
@@ -368,6 +398,8 @@ def score_progress(
         if attempt is not None:
             attempt.effective_score = score
     branch = state.branch(state.attempts[-1].branch) if state.attempts else None
+    if not effective:
+        return record
     if score >= threshold:
         state.stagnation_count = 0
         if branch is not None:
@@ -390,6 +422,8 @@ class DecisionEffects:
 def apply_decision(state: ResearchState, decision: dict[str, Any], *, stamp: Stamp) -> DecisionEffects:
     """Apply the supervisor's branch, subgoal, and statement updates; return the next plan."""
     labels: dict[str, str] = {}
+    if decision.get("revisit_condition"):
+        state.revisit_condition = decision["revisit_condition"]
     new_branches: list[str] = []
     for update in decision.get("branch_updates", []):
         existing = state.branch(update.get("id"))
@@ -463,6 +497,8 @@ def record_literature(state: ResearchState, literature: dict[str, Any], checks: 
         ))
     if literature.get("success_criteria"):
         state.success_criteria = literature["success_criteria"]
+    if literature.get("scope_contract"):
+        state.scope_contract = literature["scope_contract"]
     for assumption in literature.get("assumptions", []):
         if assumption not in state.assumptions:
             state.assumptions.append(assumption)

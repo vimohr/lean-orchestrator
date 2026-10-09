@@ -1,5 +1,10 @@
 # lean-orchestrator
 
+Two engines are available: `lean-orch` runs the portfolio loop described below;
+`lean-orch-v2` runs a separate campaign engine with explicit allocations and
+bounded research rounds. See the [2.0 guide](docs/ORCHESTRATOR_V2.md) for its
+workflow, configuration, and an offline demonstration.
+
 `lean-orch` runs an autonomous research loop over a portfolio of open problems
 in quantum information. Disposable CLI agents (`codex exec`, `claude -p`) take
 the roles of researcher, skeptic, supervisor, literature agent, and triage
@@ -42,16 +47,32 @@ QIQCOP Zoo ──sync──> catalogue ──triage──> portfolio ──sched
 * **Prove and disprove in parallel.** Sharp problems start with a prove branch and a
   counterexample branch; the supervisor is reminded when one is neglected.
 * **Progress, not time.** The supervisor scores each iteration from 0 to 3, but the
-  score is grounded: without accepted artifacts it is capped at 1, a new Lean-verified
-  result always counts as meaningful, and repeating a failed approach scores 0.
+  score is grounded: without accepted artifacts it is capped at 1. Meaningful progress
+  also requires an explicit material advance on the plan's declared gap. Lean verification
+  establishes correctness and does not automatically establish research value. Actual
+  repeated work scores 0; lexical matches are warnings for the supervisor.
   Artifacts are weighted by how they were checked (Lean and reproduced experiments 1.0,
   informal accepted claims and dead ends 0.5, verified references 0.25). Two stagnating
-  iterations trigger a forced change of strategy; four suspend the problem.
+  effective, conclusively assessed iterations trigger a forced change of strategy; four
+  suspend the problem. Execution failures and inconclusive reviews retain their costs
+  without incrementing mathematical stagnation or lowering the progress average.
 * **Portfolio scheduling.**
   `priority = expected_progress + exploration_bonus + relevance_of_new_results - stagnation_penalty - suspension_penalty`,
   with a UCB-style exploration bonus, a triage prior, and a reserved share of epochs
-  (20 %) for untried or suspended problems. Suspended problems return when their
-  penalty decays, when another problem produces a relevant result, or on a human hint.
+  (20 %) for untried or eligible suspended problems. By default suspended problems
+  require a new relevant result or explicit human reactivation/hint before returning.
+* **Allocation and scope.** Plans describe their baseline, gap, success evidence,
+  alternative allocation, and reversal condition. Literature reports can record source
+  quantifiers, dimensions, permitted resources, conventions, and unresolved definitions.
+  A complete saved researcher report can be recovered after a process failure; it still
+  passes the ordinary machine verification and critic, and `recovery.json` retains the failure.
+* **Returned usage.** `lean-orch usage` reports known input plus output tokens separately
+  from unknown-usage planning charges. All roles, retries, and repairs are journaled.
+  `[budget] max_tokens` is a lifetime workspace admission limit (0: unlimited), with
+  `call_reserve_tokens` for each in-flight or unmetered call. Returned usage can exceed
+  the reserve, so this is a soft admission limit rather than a provider-side hard cap.
+  Newly generated agent commands enable structured output; existing `agents.toml`
+  files should add Codex `--json` or Claude `--output-format json` to report usage.
 
 ## Trust model
 
@@ -210,10 +231,3 @@ LEAN_ORCH_TEST_LEAN_PROJECT=/path/to/a/mathlib/project uv run pytest -m lean
 ## Authors
 
 Vinícius Mohr and Claude (Anthropic).
-
-## Acknowledgements
-
-The command structure follows [agent-runner](https://github.com/vimohr/agent-runner).
-Design choices draw on published lessons from AlphaEvolve, the AI co-scientist,
-Kosmos, Aletheia, AlphaProof Nexus, Seed-Prover, and Ax-Prover, and on the Lean FRO's
-comparator.

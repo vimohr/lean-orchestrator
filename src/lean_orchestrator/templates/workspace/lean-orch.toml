@@ -53,6 +53,10 @@ weight_reference = 0.25
 # ---------------------------------------------------------------------------
 # Verification: Lean is the judge of formal correctness.
 # ---------------------------------------------------------------------------
+[budget]
+max_tokens = 0                   # lifetime workspace admission budget; 0 means unlimited
+call_reserve_tokens = 25000      # planning charge for in-flight calls and calls missing usage
+
 [verification.lean]
 enabled = true
 project_dir = "lean"

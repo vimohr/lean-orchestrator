@@ -15,3 +15,6 @@ wheels/
 .DS_Store
 .ruff_cache/
 .claude/settings.local.json
+
+# Local reference PDFs
+/*.pdf

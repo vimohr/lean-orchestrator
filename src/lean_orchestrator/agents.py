@@ -22,6 +22,7 @@ from .events import Console, EventLog
 from .jsonio import utc_now, write_json
 from .pause import active_pause
 from .paths import WorkspacePaths
+from .usage import UsageLedger, json_events, parse_usage
 
 _CAPACITY_PATTERNS = (
     "model is at capacity", "overloaded", "rate limit", "rate_limit", "too many requests",
@@ -57,6 +58,10 @@ class AgentTimeoutError(AgentError):
 
 class AgentStopped(AgentError):
     """The orchestrator is shutting down."""
+
+
+class AgentBudgetError(AgentError):
+    """No new call fits the token admission budget."""
 
 
 @dataclass
@@ -131,6 +136,8 @@ class AgentRunner:
         self.pause_poll_seconds = 30.0
         self.calls = 0
         self._calls_lock = threading.Lock()
+        self.usage = UsageLedger(paths.internal_dir / "usage.jsonl", max_tokens=config.budget.max_tokens,
+                                 call_reserve=config.budget.call_reserve_tokens)
 
     def run(
         self,
@@ -205,6 +212,33 @@ class AgentRunner:
         return run_dir
 
     def _run_once(
+        self, role: str, prompt: str, agent: AgentConfig, *, tag: str,
+        problem_id: str | None, output_path: Path | None,
+    ) -> AgentResult:
+        if self._stop_requested():
+            raise AgentStopped("stop requested before the agent started")
+        self._wait_while_paused(role, tag)
+        run_dir = self._new_run_dir(role, problem_id)
+        call_id = run_dir.name
+        try:
+            self.usage.reserve(call_id, role=role, problem=problem_id, run=self.paths.relative(run_dir))
+        except ValueError as error:
+            raise AgentBudgetError(str(error)) from error
+        try:
+            return self._execute_once(role, prompt, agent, tag=tag, problem_id=problem_id,
+                                      output_path=output_path, run_dir=run_dir)
+        finally:
+            log = run_dir / "stdout.log"
+            usage = parse_usage(log.read_text(encoding="utf-8")) if log.is_file() else None
+            record = self.usage.finish(call_id, usage, role=role, problem=problem_id, run=self.paths.relative(run_dir))
+            meta_path = run_dir / "meta.json"
+            if meta_path.is_file():
+                meta = json.loads(meta_path.read_text())
+                meta["token_usage"] = record
+                write_json(meta_path, meta)
+            self.events.emit("token_usage", **record)
+
+    def _execute_once(
         self,
         role: str,
         prompt: str,
@@ -213,11 +247,11 @@ class AgentRunner:
         tag: str,
         problem_id: str | None,
         output_path: Path | None,
+        run_dir: Path,
     ) -> AgentResult:
         if self.stop_event.is_set():
             raise AgentStopped("stop requested before the agent started")
         self._wait_while_paused(role, tag)
-        run_dir = self._new_run_dir(role, problem_id)
         placeholders = {
             "workspace": str(self.paths.root),
             "run_dir": str(run_dir),
@@ -356,6 +390,15 @@ class AgentRunner:
 
 def extract_json_block(text: str) -> dict | None:
     """Recover a JSON object from an agent's final message when no file was written."""
+    for event in reversed(json_events(text)):
+        item = event.get("item", {})
+        if event.get("type") == "item.completed" and isinstance(item, dict) and item.get("type") == "agent_message":
+            return extract_json_block(item.get("text", ""))
+        if event.get("type") == "result":
+            if isinstance(event.get("structured_output"), dict):
+                return event["structured_output"]
+            if isinstance(event.get("result"), str):
+                return extract_json_block(event["result"])
     fenced = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.S)
     candidates = list(reversed(fenced))
     last_open = text.rfind("\n{")

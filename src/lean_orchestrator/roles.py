@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .agents import AgentRunner, extract_json_block
+from .agents import AgentError, AgentRunner, AgentStopped, extract_json_block
 from .events import Console, EventLog
 from .integrity import IntegrityGuard, Violation
 from .jsonio import dumps
@@ -30,6 +30,7 @@ class RoleResult:
     data: dict[str, Any]
     violations: list[Violation] = field(default_factory=list)
     run_dirs: list[Path] = field(default_factory=list)
+    recovered_from: str | None = None
 
 
 class RoleRunner:
@@ -67,13 +68,37 @@ class RoleRunner:
         result = RoleResult(data={})
         output_path.parent.mkdir(parents=True, exist_ok=True)
         self.guard.allow_new(output_path)
+        execution_error = None
+        stdout = ""
         try:
             call = self.agents.run(role, prompt, tag=tag, problem_id=problem_id, output_path=output_path)
             result.run_dirs.append(call.run_dir)
             stdout = call.stdout
+        except AgentStopped:
+            raise
+        except AgentError as error:
+            if role != "researcher" or error.run_dir is None:
+                raise
+            execution_error = error
+            if error.run_dir is not None:
+                result.run_dirs.append(error.run_dir)
+                log = error.run_dir / "stdout.log"
+                stdout = log.read_text(encoding="utf-8") if log.is_file() else ""
         finally:
             result.violations.extend(self.guard.check_and_restore())
         data, errors = self._load(role, output_path, stdout, context)
+        if execution_error is not None:
+            # Salvage only an already complete, schema-valid submission. An invalid or
+            # partial draft still belongs to a failed attempt; never ask a repair to invent it.
+            if errors or data.get("outcome") not in ("success", "partial", "failure"):
+                raise execution_error
+            result.recovered_from = str(execution_error)
+            self.events.emit("researcher_submission_recovered", problem=problem_id,
+                             failure=str(execution_error), output=self.paths.relative(output_path))
+            self.guard.write_json(output_path.with_name("recovery.json"), {
+                "failure": str(execution_error), "run": str(execution_error.run_dir),
+                "action": "recovered complete saved submission; verification and critic still required",
+            })
         repairs = 0
         while errors and repairs < self.max_repairs:
             repairs += 1

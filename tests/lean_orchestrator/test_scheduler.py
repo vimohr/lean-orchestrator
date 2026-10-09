@@ -25,11 +25,17 @@ def portfolio(*entries: PortfolioEntry, global_epochs: int = 0, exploration: int
 
 def test_only_schedulable_statuses_are_eligible():
     scheduler = Scheduler(fake_config())
-    for status, expected in ((CANDIDATE, True), (ACTIVE, True), (SUSPENDED, True), (DEFERRED, False),
+    for status, expected in ((CANDIDATE, True), (ACTIVE, True), (SUSPENDED, False), (DEFERRED, False),
                              (PENDING_REVIEW, False), (UNEXPLORED, False)):
         assert scheduler.eligible(entry("p", status=status)) is expected
     assert Scheduler(fake_config({"triage": {"enabled": False}})).eligible(entry("p", status=UNEXPLORED))
     assert not scheduler.eligible(entry("p", consecutive_failures=3))
+
+
+def test_parked_problem_needs_new_evidence_or_explicit_reactivation():
+    parked = entry("p", status=SUSPENDED)
+    assert Scheduler(fake_config(), relevance=lambda *_: 1).eligible(parked)
+    assert Scheduler(fake_config({"scheduler": {"require_revisit_trigger": False}})).eligible(parked)
 
 
 def test_priority_components_follow_the_design_formula():

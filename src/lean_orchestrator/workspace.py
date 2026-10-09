@@ -106,7 +106,7 @@ def write_mcp_config(paths: WorkspacePaths, config: Config) -> None:
 
 
 def _claude_command(effort: str) -> tuple[str, ...]:
-    return ("claude", "-p", "--model", "claude-opus-5-5", "--effort", effort)
+    return ("claude", "-p", "--model", "claude-opus-5-5", "--effort", effort, "--output-format", "json")
 
 
 def default_agent_commands(available: set[str]) -> tuple[dict[str, tuple[str, ...]], str]:

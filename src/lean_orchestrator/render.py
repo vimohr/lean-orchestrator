@@ -272,6 +272,15 @@ def render_dossier(state: ResearchState, entry: PortfolioEntry, *, max_items: in
     ]
     if state.success_criteria:
         lines += ["Success criteria: " + state.success_criteria, ""]
+    if state.scope_contract:
+        lines += ["## Source and scope contract", ""]
+        for key, values in state.scope_contract.items():
+            lines += [f"- {key.replace('_', ' ')}: " + "; ".join(values)]
+        lines.append("")
+    if state.checkpoint:
+        lines += [f"Latest complete draft: `{state.checkpoint}`. Read selectively; the dossier is a navigation note.", ""]
+    if state.revisit_condition:
+        lines += [f"Condition for returning to this target: {state.revisit_condition}", ""]
     formal = state.active_formal_statement
     lines += ["## Formal statement", "",
               f"`{formal.decl}` in `{formal.file}` (locked). Main results must have exactly this type or its negation."
@@ -291,7 +300,8 @@ def render_dossier(state: ResearchState, entry: PortfolioEntry, *, max_items: in
     do_not_retry = [f"- {_one_line(item.approach, 120)}: {_one_line(item.reason, 180)}" for item in state.dead_ends]
     do_not_retry += [f"- {attempt.id} `{_one_line(attempt.fingerprint or attempt.approach, 120)}`: "
                      f"{_one_line(attempt.failure_reason or attempt.lesson, 180)}"
-                     for attempt in state.attempts if attempt.outcome in ("failure", "inconclusive")]
+                     for attempt in state.attempts if attempt.outcome in ("failure", "inconclusive")
+                     and attempt.execution_status == "completed"]
     lines += ["## Do not retry", ""]
     lines += do_not_retry[-2 * max_items:] or ["Nothing recorded."]
     lines.append("")

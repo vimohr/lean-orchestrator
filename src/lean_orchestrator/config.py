@@ -33,12 +33,13 @@ def _codex() -> AgentConfig:
     return AgentConfig(command=(
         "codex", "--search", "exec", "--model", "gpt-6-astra",
         "--config", 'model_reasoning_effort="max"',
-        "--sandbox", "workspace-write", "--skip-git-repo-check",
+        "--sandbox", "workspace-write", "--skip-git-repo-check", "--json",
     ))
 
 
 def _claude(effort: str = "max") -> AgentConfig:
-    return AgentConfig(command=("claude", "-p", "--model", "claude-opus-5-5", "--effort", effort))
+    return AgentConfig(command=("claude", "-p", "--model", "claude-opus-5-5", "--effort", effort,
+                                "--output-format", "json"))
 
 
 @dataclass(frozen=True)
@@ -73,8 +74,15 @@ class LoopConfig:
 
 
 @dataclass(frozen=True)
+class BudgetConfig:
+    max_tokens: int = 0
+    call_reserve_tokens: int = 25_000
+
+
+@dataclass(frozen=True)
 class SchedulerConfig:
     exploration_reserve: float = 0.2
+    require_revisit_trigger: bool = True
     exploration_weight: float = 0.4
     relevance_weight: float = 0.3
     stagnation_weight: float = 0.3
@@ -203,6 +211,7 @@ class McpConfig:
 class Config:
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     loop: LoopConfig = field(default_factory=LoopConfig)
+    budget: BudgetConfig = field(default_factory=BudgetConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     progress: ProgressConfig = field(default_factory=ProgressConfig)
     verification: VerificationConfig = field(default_factory=VerificationConfig)
@@ -223,6 +232,8 @@ class Config:
             raise ConfigurationError("loop.iterations_per_epoch must be at least 1")
         if self.loop.max_parallel < 1:
             raise ConfigurationError("loop.max_parallel must be at least 1")
+        if self.budget.max_tokens < 0 or self.budget.call_reserve_tokens < 1:
+            raise ConfigurationError("budget.max_tokens must be nonnegative and call_reserve_tokens positive")
         if not 0.0 <= self.scheduler.exploration_reserve < 1.0:
             raise ConfigurationError("scheduler.exploration_reserve must lie in [0, 1)")
         if not 0.0 < self.scheduler.ewma_alpha <= 1.0:

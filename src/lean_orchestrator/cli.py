@@ -32,6 +32,7 @@ from .workspace import (
     DEFAULT_LEAN_LIBRARY, DEFAULT_MATHLIB_REV, DEFAULT_PHYSLIB_REV, LEAN_LIBRARIES, InitOptions, WorkspaceError,
     agents_confirmed, confirm_agents, init_workspace, refresh_prompts, write_agents_config,
 )
+from .usage import UsageLedger
 
 
 def _workspace(args: argparse.Namespace) -> Path:
@@ -103,6 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     status = commands.add_parser("status", help="show the portfolio")
     status.add_argument("--all", action="store_true", help="also list deferred and untriaged problems")
     status.add_argument("--json", action="store_true", help="print the portfolio as JSON")
+    commands.add_parser("usage", help="show returned token usage and separate unknown-usage planning charges")
 
     show = commands.add_parser("show", help="print a problem's progress report")
     show.add_argument("problem")
@@ -188,7 +190,7 @@ def _dispatch(args: argparse.Namespace, console: Console) -> int:
         return 0
     workspace = _workspace(args)
     handler = {
-        "sync": _sync, "triage": _triage, "run": _run, "status": _status, "show": _show, "add": _add,
+        "sync": _sync, "triage": _triage, "run": _run, "status": _status, "show": _show, "add": _add, "usage": _usage,
         "hint": _hint, "activate": _set_status, "suspend": _set_status, "defer": _set_status, "pin": _pin,
         "review": _review, "stop": _stop, "pause": _pause, "resume": _resume, "refresh-prompts": _refresh_prompts,
         "doctor": _doctor,
@@ -311,6 +313,14 @@ def _status(args, workspace: Path, console: Console) -> int:
     if pending:
         print(f"\n{len(pending)} queued command(s) will be applied by the running loop.")
     print(f"\nDetails: {paths.portfolio_md}")
+    return 0
+
+
+def _usage(args, workspace: Path, console: Console) -> int:
+    budget = load_config(workspace).budget
+    ledger = UsageLedger(WorkspacePaths(workspace).internal_dir / "usage.jsonl",
+                         max_tokens=budget.max_tokens, call_reserve=budget.call_reserve_tokens)
+    print(json.dumps(ledger.summary(), indent=2))
     return 0
 
 

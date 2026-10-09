@@ -31,6 +31,10 @@ Issues = "https://github.com/vimohr/lean-orchestrator/issues"
 
 [project.scripts]
 lean-orch = "lean_orchestrator.cli:main"
+lean-orch-v2 = "lean_orchestrator_v2.cli:main"
+
+[project.optional-dependencies]
+v2 = ["tiktoken"]
 
 [dependency-groups]
 dev = ["pytest>=8"]

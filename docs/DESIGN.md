@@ -1,23 +1,14 @@
 # Design notes
 
-This document records why `lean-orch` is built the way it is. The guiding
-principle is the one of the original brief: the system is distributed
-mathematical search with persistent verified knowledge, not several language
-models talking to one another. Agents are disposable; their verified discoveries
-are not.
+This document records why `lean-orch` is built the way it is. The system runs
+distributed mathematical search with persistent verified knowledge. Agents are
+disposable; their verified discoveries remain available to later attempts.
 
 ## 1. Who decides what is true
 
-Published agent research systems show how easily unverified claims accumulate.
-A Gemini-based study of 700 Erdős problems listed as open addressed 13 of them, and
-8 of these turned out to be solved already in the literature
-([arXiv:2601.22401](https://arxiv.org/abs/2601.22401)). Independent scientists
-judged 79.4 % of the statements in Kosmos reports accurate, so roughly one in five
-was not ([arXiv:2511.02824](https://arxiv.org/abs/2511.02824)). Language models
-also write "proofs" of false statements when prompted to
-([BrokenMath, arXiv:2510.04721](https://arxiv.org/abs/2510.04721)).
-
-`lean-orch` therefore separates judgement from generation and ranks evidence:
+Generated arguments can contain errors, overlook existing results, or answer a
+different question. `lean-orch` separates judgement from generation and ranks
+evidence:
 
 1. **Lean** decides formal correctness. The orchestrator runs the checks itself,
    computes axioms with its own metaprogram (imported modules can override
@@ -38,12 +29,9 @@ that is unit-tested over its whole decision table.
 
 ## 2. Tamper resistance
 
-Agents with write access exploit their verifiers, for example by editing the tests
-that judge them ([ImpossibleBench, arXiv:2510.20270](https://arxiv.org/abs/2510.20270)).
-Search systems likewise exploit imprecise numerical checks
-([arXiv:2511.02864](https://arxiv.org/abs/2511.02864)), and formal proof search must
-guard against moving the difficulty into unproved auxiliary lemmas
-([arXiv:2605.22763](https://arxiv.org/abs/2605.22763)). The defenses here:
+An agent with write access could change the checks that judge its output.
+Imprecise numerical tolerances and unproved auxiliary lemmas can also conceal a
+failed argument. The defenses here:
 
 * the integrity guard restores any orchestrator-owned file an agent changes and
   quarantines forged files in watched directories, recording a violation that
@@ -55,39 +43,42 @@ guard against moving the difficulty into unproved auxiliary lemmas
   probe (`axiom`, `unsafe`, `implemented_by`, `native_decide`, `#eval`, `elab`,
   `macro`, `syntax`, environment modification);
 * a triviality probe rejects formal statements that automation proves or refutes,
-  a common symptom of misformalization
-  ([Xena blog on Erdős formalizations](https://xenaproject.wordpress.com/2025/12/05/formalization-of-erdos-problems/)).
+  a common symptom of misformalization.
 
 ## 3. Measuring progress
 
-The brief asks for information gain rather than elapsed time. The supervisor
+Progress measures information gain rather than elapsed time. The supervisor
 scores each iteration from 0 to 3 with explicit categories (new lemma, Lean-verified
 step, reduction, subsidiary counterexample, literature theorem, eliminated class of
 approaches, improved formal statement, new line of attack). To keep that score
 honest, `recording.score_progress` grounds it in recorded artifacts, weighted by how
 they were checked. Without a weighted gain of at least 1.0 the score is capped at 1;
-a new Lean-verified result is always meaningful; repeating a failed approach scores
-0 whatever the supervisor says. Repeats are detected lexically (approach
-fingerprints) and by the critic, and every plan must state its novelty relative to
-earlier failures before compute is spent, which follows ShinkaEvolve's rejection of
-near-duplicates before evaluation ([arXiv:2509.19349](https://arxiv.org/abs/2509.19349)).
+a meaningful score additionally requires an explicit material advance on the
+declared gap. Lean verification establishes correctness without automatically
+establishing research value. Lexical matches (approach fingerprints) are warnings
+for assessment rather than an automatic zero, and every plan must state its novelty
+relative to earlier failures before compute is spent.
 
-Stagnation escalates in two steps, as in AdaEvolve's stagnation ladder
-([arXiv:2602.20133](https://arxiv.org/abs/2602.20133)): after two low-gain
-iterations the supervisor must change strategy; after four the problem is
-suspended, not declared false.
+Stagnation escalates in two steps: after two low-gain
+effective, conclusively assessed iterations the supervisor must change strategy;
+after four the problem is suspended, not declared false. Execution failures,
+broken verification, and inconclusive review retain their records and costs without
+increasing mathematical stagnation or lowering the progress average.
 
 ## 4. Scheduling
 
-The priority formula of the brief is implemented literally
-(`scheduler.Scheduler.priority`): expected progress is a discounted mean of epoch
+The priority formula is implemented in `scheduler.Scheduler.priority`:
+expected progress is a discounted mean of epoch
 scores shrunk toward the triage prior; the exploration bonus is UCB1-shaped; relevance
 counts links from other problems' new results; stagnation and suspension enter as
 penalties, the latter decaying with elapsed epochs. A reserved share of epochs goes
-to untried or suspended problems, following the exploration reserves of AlphaEvolve
-and DeepScientist ([arXiv:2509.26603](https://arxiv.org/abs/2509.26603)). Human
-hints revive suspended problems, as Agent Laboratory found human checkpoints
-valuable ([arXiv:2501.04227](https://arxiv.org/abs/2501.04227)).
+to untried or eligible suspended problems. Human hints revive suspended problems.
+By default a suspended problem requires new relevant evidence or explicit human
+reactivation before returning; elapsed-time penalty decay alone does not reopen it.
+
+The v2 engine uses explicit qualitative allocation notes and
+per-original-problem effective rounds. Its independent state model and workflow
+are documented in [ORCHESTRATOR_V2.md](ORCHESTRATOR_V2.md).
 
 ## 5. Memory
 
@@ -99,18 +90,15 @@ Three layers keep the state reusable across hundreds of iterations:
   open subgoals, branches, a do-not-retry list, recent lessons, and human hints;
 * a cross-problem registry of accepted results (`knowledge/`) and relevance links.
 
-Anthropic's Fermat formalization found that disposable agents lose track of
-project state unless statements live in a durable structure separate from proofs
-([anthropic.com](https://www.anthropic.com/research/formalizing-fermats-last-theorem));
-the locked formal statement and the claim registry play that role here.
+Locked formal statements and the claim registry retain project state separately
+from individual agents' proofs and conversations.
 
 ## 6. Prove and disprove
 
 Sharp questions start with a prove branch and a counterexample branch; the
 supervisor is reminded when one lags. Counterexample work uses numerics first
 and exact certification second (rational or algebraic witnesses, verification
-scripts, and, where feasible, a Lean proof of the negation), as in Aristotle's use
-of goal negation as a search action ([arXiv:2510.01346](https://arxiv.org/abs/2510.01346)).
+scripts, and, where feasible, a Lean proof of the negation).
 
 ## 7. Lean library
 

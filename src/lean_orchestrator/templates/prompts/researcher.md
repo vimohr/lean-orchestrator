@@ -1,5 +1,10 @@
 {{common}}
 
+Keep the latest complete mathematical draft in a file and identify it in the
+report's `checkpoint` field. Save the report before the last calculations so a
+complete submission survives an execution failure. State advance over the plan's
+baseline and the remaining gap; a restricted result keeps its restricted scope.
+
 # Your role: RESEARCHER
 
 Carry out one concrete research step on the problem below. The supervisor chose

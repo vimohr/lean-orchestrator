@@ -38,6 +38,7 @@ result that survived review. Everything else is `proposed`, `rejected`, or `retr
 ```sh
 lean-orch doctor                 # check agents, Lean, Python, and network
 lean-orch status                 # portfolio overview
+lean-orch usage                  # returned tokens and separate unknown-usage planning charges
 lean-orch run --epochs 5         # run the research loop
 lean-orch show <problem>         # print a progress report
 lean-orch hint <problem> "..."   # give agents a hint (reactivates a suspended problem)

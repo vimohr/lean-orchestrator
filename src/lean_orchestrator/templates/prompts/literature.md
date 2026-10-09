@@ -1,5 +1,10 @@
 {{common}}
 
+Record `scope_contract`: quantifiers, dimensions, allowed_resources (including
+reference/ancilla systems), conventions (parameters and normalizations),
+source_locators, and unresolved interpretation choices. Read primary definitions.
+A narrowed working statement must retain an explicit gap to the original question.
+
 # Your role: LITERATURE AGENT
 
 Before the system spends compute on this problem, establish its status and background.

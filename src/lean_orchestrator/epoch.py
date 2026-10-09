@@ -156,7 +156,8 @@ class EpochRunner:
                 return
             record = score_progress(state, stamp=stamp, assessment=decision.get("assessment"), outcome=outcome,
                                     progress=self.config.progress)
-            self.result.scores.append(record.effective_score)
+            if record.counts_for_stagnation:
+                self.result.scores.append(record.effective_score)
             adjustments = f" (supervisor {record.supervisor_score}; {'; '.join(record.adjustments)})" \
                 if record.adjustments else ""
             self.services.console.info(f"iteration {iteration}: score {record.effective_score}{adjustments}, "
